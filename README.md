@@ -49,28 +49,41 @@ Creates flexible batch/order/shipment identifiers.
 
 Links supply chain events to a batch and a proof.
 
-## Install
+## Local Development
+
+This repository currently uses Foundry for lightweight Solidity development.
+
+Install Foundry first, then run:
 
 ```bash
-npm install
+forge build
 ```
 
-## Compile
+Format contracts:
 
 ```bash
-npm run compile
+forge fmt
 ```
 
-## Test
+Development notes:
 
-```bash
-npm test
+```text
+docs/local-development.md
+docs/contract-design.md
 ```
 
-## Deploy Locally
+## First Integration Target
 
-```bash
-npm run deploy:local
+```text
+chaintrace-app
+        ↓
+calculate SHA-256 file hash
+        ↓
+call ProofRegistry.registerProof
+        ↓
+return proofId and transaction hash
+        ↓
+show transaction hash on Proof Page
 ```
 
 ## Design Principle
