@@ -1,0 +1,7 @@
+cache/
+out/
+broadcast/
+reports/
+.env
+.env.*
+!.env.example
