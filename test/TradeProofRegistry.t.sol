@@ -44,41 +44,41 @@ contract TradeProofRegistryTest {
     }
 
     function testRejectsZeroDigest() public {
-        vm.prank(ALICE);
         vm.expectRevert(abi.encodeWithSelector(TradeProofRegistry.ZeroDigest.selector));
+        vm.prank(ALICE);
         registry.anchorPassport(bytes32(0), SCHEMA_HASH, PROFILE_HASH, bytes32(0));
     }
 
     function testRejectsZeroSchemaHash() public {
-        vm.prank(ALICE);
         vm.expectRevert(abi.encodeWithSelector(TradeProofRegistry.ZeroSchemaHash.selector));
+        vm.prank(ALICE);
         registry.anchorPassport(PASSPORT_V1, bytes32(0), PROFILE_HASH, bytes32(0));
     }
 
     function testRejectsZeroDigestProfileHash() public {
-        vm.prank(ALICE);
         vm.expectRevert(abi.encodeWithSelector(TradeProofRegistry.ZeroDigestProfileHash.selector));
+        vm.prank(ALICE);
         registry.anchorPassport(PASSPORT_V1, SCHEMA_HASH, bytes32(0), bytes32(0));
     }
 
     function testRejectsDuplicateDigest() public {
         _anchorPassport(ALICE, PASSPORT_V1, bytes32(0));
 
-        vm.prank(BOB);
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.AlreadyAnchored.selector, PASSPORT_V1)
         );
+        vm.prank(BOB);
         registry.anchorPassport(PASSPORT_V1, SCHEMA_HASH, PROFILE_HASH, bytes32(0));
     }
 
     function testResponseRequiresCurrentPassport() public {
-        vm.prank(BOB);
         vm.expectRevert(
             abi.encodeWithSelector(
                 TradeProofRegistry.CurrentPassportRequired.selector,
                 PASSPORT_V1
             )
         );
+        vm.prank(BOB);
         registry.anchorResponse(
             RESPONSE_V1,
             PASSPORT_V1,
@@ -111,10 +111,10 @@ contract TradeProofRegistryTest {
     function testOnlyIssuerCanRevoke() public {
         _anchorPassport(ALICE, PASSPORT_V1, bytes32(0));
 
-        vm.prank(BOB);
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.NotIssuer.selector, PASSPORT_V1, BOB)
         );
+        vm.prank(BOB);
         registry.revoke(PASSPORT_V1, REASON_HASH);
     }
 
@@ -146,10 +146,10 @@ contract TradeProofRegistryTest {
     function testCannotSupersedeAnotherIssuersArtifact() public {
         _anchorPassport(ALICE, PASSPORT_V1, bytes32(0));
 
-        vm.prank(BOB);
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.NotIssuer.selector, PASSPORT_V1, BOB)
         );
+        vm.prank(BOB);
         registry.anchorPassport(PASSPORT_V2, SCHEMA_HASH, PROFILE_HASH, PASSPORT_V1);
     }
 
@@ -165,10 +165,10 @@ contract TradeProofRegistryTest {
             bytes32(0)
         );
 
-        vm.prank(ALICE);
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.KindMismatch.selector, RESPONSE_V1)
         );
+        vm.prank(ALICE);
         registry.anchorPassport(PASSPORT_V2, SCHEMA_HASH, PROFILE_HASH, RESPONSE_V1);
     }
 
@@ -185,10 +185,10 @@ contract TradeProofRegistryTest {
             bytes32(0)
         );
 
-        vm.prank(BOB);
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.SubjectMismatch.selector, RESPONSE_V1)
         );
+        vm.prank(BOB);
         registry.anchorResponse(
             RESPONSE_V2,
             OTHER_PASSPORT,
