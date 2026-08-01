@@ -50,10 +50,7 @@ contract TradeProofRegistry {
     );
 
     event ArtifactRevoked(
-        bytes32 indexed digest,
-        address indexed issuer,
-        bytes32 reasonHash,
-        uint64 revokedAt
+        bytes32 indexed digest, address indexed issuer, bytes32 reasonHash, uint64 revokedAt
     );
 
     /// @notice Anchor a Trade Proof Passport digest.
@@ -92,9 +89,8 @@ contract TradeProofRegistry {
     ) external {
         Anchor storage passport = anchors[passportDigest];
         if (
-            passport.issuer == address(0) ||
-            passport.kind != ArtifactKind.Passport ||
-            !_isCurrent(passport)
+            passport.issuer == address(0) || passport.kind != ArtifactKind.Passport
+                || !_isCurrent(passport)
         ) {
             revert CurrentPassportRequired(passportDigest);
         }
@@ -170,10 +166,7 @@ contract TradeProofRegistry {
             if (predecessor.kind != kind) {
                 revert KindMismatch(supersedesDigest);
             }
-            if (
-                kind == ArtifactKind.Response &&
-                predecessor.subjectDigest != subjectDigest
-            ) {
+            if (kind == ArtifactKind.Response && predecessor.subjectDigest != subjectDigest) {
                 revert SubjectMismatch(supersedesDigest);
             }
 
