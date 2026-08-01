@@ -2,3 +2,4 @@ TradeProofRegistry canonical Base Sepolia deployment trigger.
 Expected deployer nonce: 1
 Reviewed source commit: 27248faeed7f3eb88428fa8ce7979223e088429f
 Default-branch deployment workflow commit: 268a31699fdb36b83d2e01bf2d7df5da8abe8708
+Main-owned gated deployment job commit: a315b22d407f2ea057dc6a841b9f84ad3dec758e
