@@ -1,41 +1,49 @@
 # ChainTrace Contracts
 
-**Minimal smart contracts for the Trade Proof and ChainTrace proof layer.**
+**Canonical Solidity contracts for the TradeProof proof and contributor economy.**
 
-This repository is the canonical Solidity source of truth for Trade Proof contracts.
+## Canonical contract stack
 
-## Canonical v0.1 contracts
+```text
+TradeProofRegistry
+  Passport / Response digest chronology and current state
+        ↓
+TradeProofContribution
+  non-transferable contribution receipts and seasonal Proof Points
+        ↓
+TradeProofGenesis
+  atomic fixed-supply Token and team-vesting deployment
+        ├─ TradeProofToken
+        └─ TradeProofTeamVesting
+```
 
-### TradeProofRegistry.sol
+Token holdings, transfers, allowances, vesting, receipts, or Proof Points can never make a Passport, Response, evidence record, or real-world assertion valid.
 
-`TradeProofRegistry` anchors canonical digests of:
+## TradeProofRegistry
 
-- Trade Proof Passports;
-- Trade Proof Responses.
+`TradeProofRegistry` anchors canonical Passport and Response digests with issuer, timestamp, schema/profile hashes, supersession links, revocation state, and Response subject continuity.
 
-It records issuer, block time, artifact kind, Response subject, schema/profile hashes, supersession links, and revocation state. It does not store source documents or commercial plaintext.
-
-The digest profile is documented in:
+It does not store source documents or commercial plaintext.
 
 ```text
 docs/trade-proof-registry-v0.1.md
 ```
 
-### TradeProofContribution.sol
+## TradeProofContribution
 
-`TradeProofContribution` records non-transferable contribution receipts and seasonal Proof Points derived from current Registry anchors and governed public-goods review.
+`TradeProofContribution` records non-transferable receipts and seasonal Proof Points derived from current Registry anchors and governed public-goods review.
 
-Implemented automatic contribution classes:
+Automatic contribution classes:
 
 ```text
 unique Passport                          +5 issuer
 independent external Response            +10 Passport issuer / +20 responder
 third distinct responder role            +30 Passport issuer
-viral reuse within 30 days               +50 inviter / +25 new creator
+viral reuse within 30 days               +50 inviter / +25 creator
 repeat use across two lineages           +20 participant
 ```
 
-Implemented reviewed public-goods classes:
+Reviewed public-goods ranges:
 
 ```text
 accepted standard change                    500–3,000
@@ -45,7 +53,7 @@ verified repeat adoption case             1,000–10,000
 documentation, translation, or education    100–2,000
 ```
 
-Economic controls:
+Controls:
 
 ```text
 season length                              90 days
@@ -57,15 +65,75 @@ automatic wallet/day cap                  200 points
 automatic wallet-pair/season cap          300 points
 ```
 
-Receipts and Proof Points are not ERC-20 or ERC-721 assets and have no transfer function. The contract does not mint, distribute, sell, price, or move TPROOF.
-
-The bounded implementation contract is documented in:
-
 ```text
 docs/trade-proof-contribution-v0.1.md
 ```
 
-The canonical economic constitution remains in:
+## Fixed-supply TPROOF genesis
+
+### TradeProofToken
+
+Minimal ERC-20 properties:
+
+```text
+Name: TradeProof Token
+Symbol: TPROOF
+Decimals: 18
+Maximum supply: 1,000,000,000
+Genesis supply: 1,000,000,000
+Post-genesis minting: none
+Owner/admin role: none
+Transfer tax: none
+Forced transfer: none
+Proxy/upgrade path: none
+```
+
+Exact constructor allocation:
+
+```text
+Community contributions              450,000,000  45%
+Ecosystem and developer fund         200,000,000  20%
+Core team vesting                    150,000,000  15%
+Real adoption incentives             100,000,000  10%
+Liquidity bootstrapping reserve       50,000,000   5%
+Security and standards reserve        50,000,000   5%
+                                    -----------
+                                  1,000,000,000 100%
+```
+
+The liquidity reserve is only an allocation bucket. No pool, sale, price, market, claim, or trading venue is implemented.
+
+### TradeProofTeamVesting
+
+The full team allocation is held by an immutable escrow:
+
+```text
+allocation: 150,000,000 TPROOF
+cliff: 365 days
+linear vesting duration: 1,460 days
+beneficiary: immutable
+start timestamp: immutable and cannot be backdated
+administrator: none
+```
+
+At the 12-month cliff, 25% is vested. Anyone may trigger a release, but vested tokens only reach the immutable beneficiary.
+
+### TradeProofGenesis
+
+The atomic genesis factory:
+
+1. validates six distinct nonzero economic beneficiaries;
+2. deploys the fixed-supply Token;
+3. deploys team vesting;
+4. transfers all 150,000,000 team tokens into vesting;
+5. verifies one-billion total supply, exact escrow balance, and zero factory balance;
+6. exposes no post-deployment control function.
+
+```text
+docs/trade-proof-token-genesis-v0.1.md
+```
+
+The economic constitution remains canonical in:
 
 ```text
 https://github.com/moseszhu999/trade-proof-passport/blob/main/standard/tproof-token-economics-v0.1.md
@@ -88,37 +156,13 @@ Bytecode check: PASS
 Explorer source verification: pending
 ```
 
-The machine-readable Registry deployment record is:
-
 ```text
 deployments/base-sepolia.json
 ```
 
-`TradeProofContribution` is not yet deployed. A future testnet deployment requires this implementation PR, test and security gates, exact-source evidence, and a separate deployment review.
-
-## Contract architecture
-
-```text
-Trade Proof Passport / Response JSON
-        ↓ canonicalization profile
-Keccak-256 artifact digest
-        ↓
-TradeProofRegistry
-        ↓ current onchain artifact facts
-TradeProofContribution
-        ↓ delayed non-transferable receipts
-Seasonal verified Proof Points
-        ↓ future and not implemented here
-TPROOF allocation / Token contracts
-```
-
-Evidence documents remain off-chain. Evidence-level SHA-256 hashes inside a Passport are distinct from the canonical Passport or Response digest anchored by `TradeProofRegistry`.
-
-Token holdings, staking, receipts, or Proof Points cannot make a Passport, Response, evidence record, or real-world assertion valid.
+`TradeProofContribution`, `TradeProofToken`, `TradeProofTeamVesting`, and `TradeProofGenesis` are not deployed by this implementation branch.
 
 ## Legacy proof primitives
-
-The following contracts are retained as early ChainTrace proof primitives:
 
 ```text
 contracts/ProofRegistry.sol
@@ -126,39 +170,38 @@ contracts/BatchRegistry.sol
 contracts/EventRegistry.sol
 ```
 
-They are not canonical Trade Proof Passport or contribution contracts and should not be extended into competing Passport, lifecycle, receipt, or points systems.
+These are retained historical primitives, not competing Passport, contribution, or Token owners.
 
-## Current scope
+## Current implementation scope
 
-Implemented:
+Implemented in source:
 
 - Passport and Response digest anchoring;
-- same-issuer version supersession;
-- Response subject continuity;
-- issuer-controlled revocation;
-- current/history queries;
-- bounded contribution receipts and Proof Points;
-- independent-response, role, viral-reuse, and repeat-use rules;
-- reviewed public-goods submissions;
-- review delay, exclusion, appeal, revocation, caps, and season closure;
-- Foundry tests;
-- canonical Registry Base Sepolia deployment;
+- supersession and revocation history;
+- contribution receipts and seasonal Proof Points;
+- automatic and reviewed contribution classes;
+- anti-wash caps, review delay, appeals, revocation, and season closure;
+- fixed one-billion TPROOF supply;
+- exact six-bucket genesis allocation;
+- immutable team cliff and linear vesting;
+- atomic genesis invariant checks;
 - Foundry and DLSK CI gates.
 
-Not implemented:
+Not implemented or authorized:
 
-- `TradeProofToken.sol`;
-- Token issuance, claims, distribution, sale, or liquidity;
-- square-root seasonal Token allocation execution;
-- production multisig, timelock, identity, or organizational-authority verification;
-- payment, settlement, lending, disbursement, custody, or asset tokenization;
-- Contribution contract testnet deployment;
-- Registry explorer source verification;
-- formal external smart-contract audit.
+- Token deployment;
+- public claim or Genesis Proof distribution;
+- square-root seasonal allocation execution;
+- sale, presale, auction, pricing, or liquidity action;
+- staking yield, revenue share, dividend, or redemption;
+- governance execution;
+- production multisig or timelock;
+- payment, settlement, lending, custody, or asset tokenization;
+- identity or organizational-authority verification;
+- formal external smart-contract audit;
+- legal launch clearance.
 
-## Local development
-
-Install Foundry and run:
+## Local validation
 
 ```bash
 forge fmt --check
@@ -166,28 +209,17 @@ forge build --sizes
 forge test -vvv
 ```
 
-## Security gate
-
-Pull requests run:
-
-```text
-forge fmt --check
-forge build --sizes
-forge test -vvv
-DLSK scan with fail-on-high
-```
-
-DLSK is a pre-audit readiness gate, not a formal security audit.
+Pull requests also run DLSK and block any HIGH or CRITICAL finding. DLSK and Foundry are pre-audit gates, not a formal external audit.
 
 ## Design principles
 
 ```text
 Proof, not exposure.
-Hashes, not sensitive files.
-Portable objects, not platform lock-in.
-Evidence integrity, not automatic truth.
 Contribution before liquidity.
-Community incentives, not control of evidence validity.
+Fixed supply, no hidden mint.
+Long vesting, no instant team unlock.
+Community economics, not control of evidence validity.
+No public launch before technical, security, governance, and legal gates.
 ```
 
 ## License
@@ -196,4 +228,4 @@ MIT.
 
 ## Disclaimer
 
-These contracts are experimental and unaudited. They do not constitute a financial product, investment contract, token sale, lending system, payment system, legal attestation, or promise of future returns.
+These contracts are experimental and unaudited. They do not constitute a financial product, investment contract, token sale, lending system, payment system, legal attestation, or promise of price, liquidity, yield, revenue share, redemption, or future returns.
