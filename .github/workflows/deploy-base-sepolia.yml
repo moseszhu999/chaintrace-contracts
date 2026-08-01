@@ -1,9 +1,9 @@
 name: Deploy canonical TradeProofRegistry to Base Sepolia
 
 on:
-  push:
+  pull_request:
     branches:
-      - deploy/base-sepolia-trade-proof-registry-v1
+      - main
 
 permissions:
   contents: read
@@ -22,6 +22,7 @@ env:
 
 jobs:
   deploy:
+    if: github.head_ref == 'deploy/base-sepolia-trade-proof-registry-v1'
     name: Broadcast one canonical registry deployment
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -35,7 +36,6 @@ jobs:
           version: stable
 
       - name: Validate network, wallet, nonce, and balance
-        id: preflight
         shell: bash
         run: |
           set -euo pipefail
@@ -119,7 +119,7 @@ jobs:
             exit 1
           fi
 
-          export BLOCK_HEX BYTECODE
+          export BLOCK_HEX
           BLOCK_NUMBER="$(python - <<'PY'
           import os
           value = os.environ['BLOCK_HEX']
