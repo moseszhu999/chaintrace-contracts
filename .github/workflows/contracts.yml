@@ -22,6 +22,23 @@ jobs:
         with:
           version: stable
 
+      - name: Parse deployment manifest template
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("deployments/base-sepolia-economic-stack.template.json").read_text())
+          assert data["chainId"] == 84532
+          assert data["status"] == "template-not-deployed"
+          assert data["token"]["maxSupplyTokens"] == "1000000000"
+          assert data["token"]["publicSaleActive"] is False
+          assert data["token"]["claimActive"] is False
+          assert data["token"]["liquidityPoolActive"] is False
+          assert data["boundaries"]["testnetOnly"] is True
+          assert data["boundaries"]["mainnetAuthorized"] is False
+          print("PASS: bounded Base Sepolia manifest template")
+          PY
+
       - name: Check canonical contract formatting
         run: |
           forge fmt --check \
@@ -31,14 +48,22 @@ jobs:
             contracts/TradeProofTeamVesting.sol \
             contracts/TradeProofGenesis.sol \
             contracts/TradeProofSeasonAllocation.sol \
+            contracts/TradeProofTestnetTreasuryVault.sol \
             test/TradeProofRegistry.t.sol \
             test/TradeProofContribution.t.sol \
             test/TradeProofToken.t.sol \
             test/TradeProofSeasonAllocation.t.sol \
-            script/DeployTradeProofRegistry.s.sol
+            test/TradeProofEconomicStack.t.sol \
+            script/DeployTradeProofRegistry.s.sol \
+            script/DeployTradeProofEconomicStack.s.sol
 
-      - name: Build contracts
-        run: forge build --sizes
+      - name: Build deployable contracts with EIP-170 size gates
+        run: forge build --sizes --skip script
+
+      - name: Compile Foundry deployment scripts
+        run: |
+          forge build script/DeployTradeProofRegistry.s.sol
+          forge build script/DeployTradeProofEconomicStack.s.sol
 
       - name: Run tests
         run: forge test -vvv

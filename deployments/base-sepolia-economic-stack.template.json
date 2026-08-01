@@ -1,0 +1,48 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "status": "template-not-deployed",
+  "sourceCommit": "SOURCE_COMMIT_SHA",
+  "registry": {
+    "address": "0xad1c714140ceb8ed7c5234d939a06926f5edaba2",
+    "existingCanonicalDeployment": true
+  },
+  "operator": "TESTNET_OPERATOR_ADDRESS",
+  "contracts": {
+    "contribution": "CONTRIBUTION_ADDRESS",
+    "token": "TOKEN_ADDRESS",
+    "teamVesting": "TEAM_VESTING_ADDRESS",
+    "seasonAllocation": "SEASON_ALLOCATION_ADDRESS",
+    "genesis": "GENESIS_ADDRESS",
+    "communityTreasury": "COMMUNITY_TREASURY_ADDRESS",
+    "ecosystemTreasury": "ECOSYSTEM_TREASURY_ADDRESS",
+    "adoptionTreasury": "ADOPTION_TREASURY_ADDRESS",
+    "liquidityReserve": "LIQUIDITY_RESERVE_ADDRESS",
+    "securityReserve": "SECURITY_RESERVE_ADDRESS"
+  },
+  "token": {
+    "name": "TradeProof Token",
+    "symbol": "TPROOF",
+    "decimals": 18,
+    "maxSupplyTokens": "1000000000",
+    "publicSaleActive": false,
+    "claimActive": false,
+    "liquidityPoolActive": false
+  },
+  "deployment": {
+    "transactionHashes": [],
+    "blockRange": null,
+    "deployedAt": null,
+    "bytecodeChecks": "pending",
+    "sourceVerification": "pending"
+  },
+  "boundaries": {
+    "testnetOnly": true,
+    "publicClaimAuthorized": false,
+    "saleAuthorized": false,
+    "liquidityAuthorized": false,
+    "mainnetAuthorized": false,
+    "formalAuditComplete": false,
+    "legalLaunchClearance": false
+  }
+}
