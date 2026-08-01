@@ -1,6 +1,26 @@
 # TradeProofRegistry v0.1
 
-Status: testnet-ready implementation candidate.
+Status: deployed on Base Sepolia; explorer source verification and formal audit remain pending.
+
+## Canonical testnet deployment
+
+```text
+Network: Base Sepolia
+Chain ID: 84532
+Address: 0xad1c714140ceb8ed7c5234d939a06926f5edaba2
+Transaction: 0x6ffcae50367e9087c736ff5c7edd7d30483aedb0e8082488a0d8a8784cbdd31c
+Block: 44891502
+Deployer: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+Reviewed source commit: 27248faeed7f3eb88428fa8ce7979223e088429f
+Solidity: 0.8.24
+Deployed bytecode: 2433 bytes
+Bytecode check: PASS
+Explorer source verification: pending
+```
+
+The canonical machine-readable record is `deployments/base-sepolia.json`.
+
+This deployment proves only that the reviewed bytecode was deployed at the recorded testnet address. It does not prove any off-chain fact, legal authority, organizational identity, production readiness, mainnet readiness, or financial claim.
 
 ## Purpose
 
