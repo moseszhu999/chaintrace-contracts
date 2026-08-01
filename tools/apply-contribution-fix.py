@@ -1,22 +1,20 @@
 from pathlib import Path
 
-path = Path("contracts/TradeProofContribution.sol")
-source = path.read_text(encoding="utf-8")
+contract_path = Path("contracts/TradeProofContribution.sol")
+contract_source = contract_path.read_text(encoding="utf-8")
 
-if "function _validateThirdDistinctResponderRoles(" in source:
-    raise SystemExit(0)
+if "function _validateThirdDistinctResponderRoles(" not in contract_source:
+    start_marker = "    function recordThirdDistinctResponderRole("
+    end_marker = "    /// @notice Record the 50/25 viral-reuse reward"
+    helper_marker = "    function _consumePairPoints("
 
-start_marker = "    function recordThirdDistinctResponderRole("
-end_marker = "    /// @notice Record the 50/25 viral-reuse reward"
-helper_marker = "    function _consumePairPoints("
+    start = contract_source.find(start_marker)
+    end = contract_source.find(end_marker, start)
+    helper_at = contract_source.find(helper_marker)
+    if start < 0 or end < 0 or helper_at < 0:
+        raise SystemExit("Expected contribution source markers were not found")
 
-start = source.find(start_marker)
-end = source.find(end_marker, start)
-helper_at = source.find(helper_marker)
-if start < 0 or end < 0 or helper_at < 0:
-    raise SystemExit("Expected contribution source markers were not found")
-
-replacement = '''    function recordThirdDistinctResponderRole(
+    replacement = '''    function recordThirdDistinctResponderRole(
         bytes32 passportDigest,
         bytes32 responseDigestA,
         bytes32 responseDigestB,
@@ -47,9 +45,9 @@ replacement = '''    function recordThirdDistinctResponderRole(
 
 '''
 
-source = source[:start] + replacement + source[end:]
-helper_at = source.find(helper_marker)
-helper = '''    function _validateThirdDistinctResponderRoles(
+    contract_source = contract_source[:start] + replacement + contract_source[end:]
+    helper_at = contract_source.find(helper_marker)
+    helper = '''    function _validateThirdDistinctResponderRoles(
         bytes32 passportDigest,
         bytes32 responseDigestA,
         bytes32 responseDigestB,
@@ -83,5 +81,47 @@ helper = '''    function _validateThirdDistinctResponderRoles(
     }
 
 '''
-source = source[:helper_at] + helper + source[helper_at:]
-path.write_text(source, encoding="utf-8")
+    contract_source = contract_source[:helper_at] + helper + contract_source[helper_at:]
+    contract_path.write_text(contract_source, encoding="utf-8")
+
+test_path = Path("test/TradeProofContribution.t.sol")
+test_source = test_path.read_text(encoding="utf-8")
+
+replacements = {
+    "vm.expectRevert(TradeProofContribution.ReviewDelayActive.selector);": '''vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.ReviewDelayActive.selector, receiptId, receipt.eligibleAt
+            )
+        );''',
+    "vm.expectRevert(TradeProofContribution.DuplicateRole.selector);": '''vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.DuplicateRole.selector, bytes32("buyer")
+            )
+        );''',
+    "vm.expectRevert(TradeProofContribution.ViralReuseWindowMissed.selector);": '''vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.ViralReuseWindowMissed.selector,
+                RESPONSE_A,
+                PASSPORT_B
+            )
+        );''',
+    "vm.expectRevert(TradeProofContribution.PointsOutOfRange.selector);": '''vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.PointsOutOfRange.selector, 15001, 500, 15000
+            )
+        );''',
+    '''        vm.expectRevert(TradeProofContribution.PairSeasonCapExceeded.selector);
+        contribution.recordIndependentResponse(eleventhResponse);''': '''        bytes32 pairKey = keccak256(abi.encode(ALICE, BOB));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.PairSeasonCapExceeded.selector, pairKey, 330
+            )
+        );
+        contribution.recordIndependentResponse(eleventhResponse);''',
+}
+
+for old, new in replacements.items():
+    if old in test_source:
+        test_source = test_source.replace(old, new, 1)
+
+test_path.write_text(test_source, encoding="utf-8")
