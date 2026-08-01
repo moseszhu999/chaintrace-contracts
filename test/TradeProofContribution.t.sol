@@ -55,7 +55,11 @@ contract TradeProofContributionTest {
         );
         _assertEq(contribution.verifiedPoints(0, ALICE), 0, "points remain pending");
 
-        vm.expectRevert(TradeProofContribution.ReviewDelayActive.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.ReviewDelayActive.selector, receiptId, receipt.eligibleAt
+            )
+        );
         contribution.finalizeReceipt(receiptId);
 
         vm.warp(receipt.eligibleAt);
@@ -146,7 +150,9 @@ contract TradeProofContributionTest {
         _declareRole(CAROL, RESPONSE_B, bytes32("buyer"));
         _declareRole(DAVE, RESPONSE_C, bytes32("logistics"));
 
-        vm.expectRevert(TradeProofContribution.DuplicateRole.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(TradeProofContribution.DuplicateRole.selector, bytes32("buyer"))
+        );
         contribution.recordThirdDistinctResponderRole(
             PASSPORT_A, RESPONSE_A, RESPONSE_B, RESPONSE_C
         );
@@ -180,7 +186,11 @@ contract TradeProofContributionTest {
         vm.warp(block.timestamp + 31 days);
         _anchorPassport(BOB, PASSPORT_B);
 
-        vm.expectRevert(TradeProofContribution.ViralReuseWindowMissed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.ViralReuseWindowMissed.selector, RESPONSE_A, PASSPORT_B
+            )
+        );
         contribution.recordViralReuse(RESPONSE_A, PASSPORT_B);
     }
 
@@ -197,7 +207,11 @@ contract TradeProofContributionTest {
     }
 
     function testPublicGoodsRequiresReviewAndEnforcesPointRange() public {
-        vm.expectRevert(TradeProofContribution.PointsOutOfRange.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.PointsOutOfRange.selector, 15001, 500, 15000
+            )
+        );
         vm.prank(ALICE);
         contribution.submitPublicGoodsContribution(
             TradeProofContribution.ContributionKind.SecurityFindingOrFix,
@@ -289,7 +303,12 @@ contract TradeProofContributionTest {
 
         bytes32 eleventhResponse = bytes32(uint256(1010));
         _anchorResponse(BOB, eleventhResponse, PASSPORT_A);
-        vm.expectRevert(TradeProofContribution.PairSeasonCapExceeded.selector);
+        bytes32 pairKey = keccak256(abi.encode(ALICE, BOB));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TradeProofContribution.PairSeasonCapExceeded.selector, pairKey, 330
+            )
+        );
         contribution.recordIndependentResponse(eleventhResponse);
     }
 
