@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: read
 
 jobs:
   foundry:
@@ -114,22 +112,23 @@ jobs:
               raise SystemExit("DLSK high-risk gate failed")
           PY
 
-  probe-economic-stack-state:
+  probe_economic_stack_state:
     name: Read-only Base Sepolia economic-stack state probe
-    needs: [foundry, dlsk]
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.number == 13 &&
-      github.head_ref == 'ops/base-sepolia-economic-stack-carrier-v0.1' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor == 'moseszhu999'
+      github.head_ref == 'ops/base-sepolia-economic-stack-carrier-v0.1'
+    needs: [foundry, dlsk]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     env:
-      RPC_URL: https://sepolia.base.org
-      EXPECTED_CHAIN_ID: "84532"
+      BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+      RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
       EXPECTED_OPERATOR: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
-      EXPECTED_POST_REGISTRY_NONCE: "2"
+      EXPECTED_NONCE: "2"
       TRADE_PROOF_REGISTRY: 0xad1c714140ceb8ed7c5234d939a06926f5edaba2
 
     steps:
@@ -139,14 +138,11 @@ jobs:
           version: stable
 
       - name: Read public chain state without signing or broadcasting
-        id: probe
-        env:
-          RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        shell: bash
         run: |
-          set +x
           set -euo pipefail
-          if [ -z "$RAW_PRIVATE_KEY" ]; then
-            echo "DEPLOYER_PRIVATE_KEY is not configured." >&2
+          if [ -z "${RAW_PRIVATE_KEY:-}" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured."
             exit 1
           fi
           PRIVATE_KEY="$RAW_PRIVATE_KEY"
@@ -156,80 +152,56 @@ jobs:
           esac
           echo "::add-mask::$PRIVATE_KEY"
           OPERATOR="$(cast wallet address --private-key "$PRIVATE_KEY")"
-          ACTUAL_CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
-          BALANCE_WEI="$(cast balance "$OPERATOR" --wei --rpc-url "$RPC_URL")"
-          NONCE="$(cast nonce "$OPERATOR" --rpc-url "$RPC_URL")"
-          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$RPC_URL")"
-          test "$(printf '%s' "$OPERATOR" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$EXPECTED_OPERATOR" | tr '[:upper:]' '[:lower:]')"
-          test "$ACTUAL_CHAIN_ID" = "$EXPECTED_CHAIN_ID"
+          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          BALANCE_WEI="$(cast balance "$OPERATOR" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          NONCE="$(cast nonce "$OPERATOR" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+
+          test "$CHAIN_ID" = "84532"
+          test "${OPERATOR,,}" = "${EXPECTED_OPERATOR,,}"
           test "$REGISTRY_CODE" != "0x"
-          REGISTRY_CODE_BYTES=$(( (${#REGISTRY_CODE} - 2) / 2 ))
-          if [ "$NONCE" -eq "$EXPECTED_POST_REGISTRY_NONCE" ]; then
+          REGISTRY_CODE_BYTES="$(( (${#REGISTRY_CODE} - 2) / 2 ))"
+
+          if [ "$NONCE" = "$EXPECTED_NONCE" ]; then
             NONCE_STATUS="baseline-clear"
-          elif [ "$NONCE" -gt "$EXPECTED_POST_REGISTRY_NONCE" ]; then
+          elif [ "$NONCE" -gt "$EXPECTED_NONCE" ]; then
             NONCE_STATUS="advanced-do-not-retrigger"
           else
             NONCE_STATUS="unexpected-below-baseline"
           fi
-          {
-            echo "operator=$OPERATOR"
-            echo "chain_id=$ACTUAL_CHAIN_ID"
-            echo "balance_wei=$BALANCE_WEI"
-            echo "nonce=$NONCE"
-            echo "nonce_status=$NONCE_STATUS"
-            echo "registry_code_bytes=$REGISTRY_CODE_BYTES"
-          } >> "$GITHUB_OUTPUT"
 
-      - name: Record probe result on carrier PR
-        uses: actions/github-script@v7
+          echo "PROBE_OPERATOR=$OPERATOR" >> "$GITHUB_ENV"
+          echo "PROBE_CHAIN_ID=$CHAIN_ID" >> "$GITHUB_ENV"
+          echo "PROBE_BALANCE_WEI=$BALANCE_WEI" >> "$GITHUB_ENV"
+          echo "PROBE_NONCE=$NONCE" >> "$GITHUB_ENV"
+          echo "PROBE_NONCE_STATUS=$NONCE_STATUS" >> "$GITHUB_ENV"
+          echo "PROBE_REGISTRY_CODE_BYTES=$REGISTRY_CODE_BYTES" >> "$GITHUB_ENV"
+
+      - name: Publish read-only result to carrier PR
         env:
-          OPERATOR: ${{ steps.probe.outputs.operator }}
-          CHAIN_ID_VALUE: ${{ steps.probe.outputs.chain_id }}
-          BALANCE_WEI: ${{ steps.probe.outputs.balance_wei }}
-          NONCE_VALUE: ${{ steps.probe.outputs.nonce }}
-          NONCE_STATUS: ${{ steps.probe.outputs.nonce_status }}
-          REGISTRY_CODE_BYTES: ${{ steps.probe.outputs.registry_code_bytes }}
-        with:
-          script: |
-            const body = [
-              '## Base Sepolia economic-stack read-only probe',
-              '',
-              `- Run: \`${context.runId}\``,
-              `- Carrier head: \`${context.sha}\``,
-              `- Operator: \`${process.env.OPERATOR}\``,
-              `- Chain ID: \`${process.env.CHAIN_ID_VALUE}\``,
-              `- Balance: \`${process.env.BALANCE_WEI} wei\``,
-              `- Nonce: \`${process.env.NONCE_VALUE}\``,
-              `- Nonce status: **${process.env.NONCE_STATUS}**`,
-              `- Canonical Registry bytecode: \`${process.env.REGISTRY_CODE_BYTES} bytes\``,
-              '',
-              'This probe was read-only. It signed and sent no transaction.',
-              '',
-              process.env.NONCE_STATUS === 'baseline-clear'
-                ? 'The operator remains at the expected post-Registry baseline. No economic-stack transaction has advanced the wallet nonce.'
-                : 'Do not authorize or repeat deployment until this nonce is reconciled.'
-            ].join('\n');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 13,
-              body
-            });
-
-      - name: Block deployment progression when nonce is not the clean baseline
-        if: steps.probe.outputs.nonce_status != 'baseline-clear'
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          echo "Operator nonce is not the expected clean baseline." >&2
-          exit 1
+          set -euo pipefail
+          cat > /tmp/economic-stack-probe.md <<EOF
+          ## Base Sepolia economic-stack read-only probe
 
-      - name: Record bounded probe failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 13,
-              body: `Base Sepolia integrated read-only probe failed. It authorized no transaction. Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            });
+          - Run: \`${{ github.run_id }}\`
+          - Carrier head: \`${{ github.sha }}\`
+          - Operator: \`$PROBE_OPERATOR\`
+          - Chain ID: \`$PROBE_CHAIN_ID\`
+          - Balance: \`$PROBE_BALANCE_WEI wei\`
+          - Nonce: \`$PROBE_NONCE\`
+          - Nonce status: **$PROBE_NONCE_STATUS**
+          - Canonical Registry bytecode: \`$PROBE_REGISTRY_CODE_BYTES bytes\`
+
+          This probe was read-only. It signed and sent no transaction.
+          EOF
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo moseszhu999/chaintrace-contracts \
+            --body-file /tmp/economic-stack-probe.md
+
+          if [ "$PROBE_NONCE_STATUS" != "baseline-clear" ]; then
+            echo "Operator nonce is not the expected clean baseline." >&2
+            exit 1
+          fi
