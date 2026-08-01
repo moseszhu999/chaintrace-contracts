@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - deploy/base-sepolia-trade-proof-registry-v1
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,6 +17,7 @@ env:
 
 jobs:
   deploy:
+    if: github.head_ref == 'deploy/base-sepolia-trade-proof-registry-v1' || github.ref == 'refs/heads/deploy/base-sepolia-trade-proof-registry-v1'
     name: Broadcast reviewed registry deployment
     runs-on: ubuntu-latest
     steps:
