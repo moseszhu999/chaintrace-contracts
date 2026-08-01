@@ -50,6 +50,16 @@ Only the repository owner may trigger the one-time workflow with this exact PR c
 
 The workflow must use the existing `DEPLOYER_PRIVATE_KEY` repository secret without printing it, derive the public operator address, verify Base Sepolia and the canonical Registry, simulate before broadcast, broadcast once, verify every deployed contract and allocation, and preserve a machine-readable evidence artifact.
 
+## Read-only preflight synchronization
+
+```text
+integratedProbeMain: 0b6e1c0ba7143d02cc47ab8c7daf6561ff4b2a53
+probeTrigger: 2026-08-01-v1
+transactionAuthorized: false
+```
+
+This synchronization only triggers Foundry, DLSK and a public Base Sepolia balance/nonce/Registry-code read. It signs and broadcasts no transaction.
+
 After successful evidence preservation:
 
 1. create a separate canonical manifest PR;
