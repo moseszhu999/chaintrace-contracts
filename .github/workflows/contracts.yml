@@ -39,6 +39,12 @@ jobs:
           print("PASS: bounded Base Sepolia manifest template")
           PY
 
+      - name: Compile deployment evidence finalizer when present
+        run: |
+          if [ -f tools/finalize-base-sepolia-economic-stack-v0.1.py ]; then
+            python -m py_compile tools/finalize-base-sepolia-economic-stack-v0.1.py
+          fi
+
       - name: Check canonical contract formatting
         run: |
           forge fmt --check \
@@ -207,3 +213,193 @@ jobs:
             echo "Operator nonce is not the expected clean baseline." >&2
             exit 1
           fi
+
+  deploy_economic_stack:
+    name: One-shot Base Sepolia economic-stack deployment
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'ops/base-sepolia-economic-stack-carrier-v0.1'
+    needs: [foundry, dlsk, probe_economic_stack_state]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: tradeproof-base-sepolia-economic-stack-v0-1
+      cancel-in-progress: false
+    env:
+      BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+      RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      EXPECTED_OPERATOR: "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9"
+      EXPECTED_NONCE: "2"
+      SOURCE_COMMIT: "d89dd24eba52aa49ffed00ca8c6e450444214c2b"
+      TRADE_PROOF_REGISTRY: "0xad1c714140ceb8ed7c5234d939a06926f5edaba2"
+      GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout deployment controls
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout exact reviewed economic-stack source
+        uses: actions/checkout@v4
+        with:
+          ref: d89dd24eba52aa49ffed00ca8c6e450444214c2b
+          path: reviewed-source
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Revalidate exact reviewed source
+        working-directory: reviewed-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge fmt --check
+          forge build --sizes --skip script
+          forge build script/DeployTradeProofEconomicStack.s.sol
+          forge test -vvv
+          python -m py_compile ../control/tools/finalize-base-sepolia-economic-stack-v0.1.py
+
+      - name: Enforce exact chain, operator, nonce, Registry and balance
+        working-directory: reviewed-source
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          if [ -z "${RAW_PRIVATE_KEY:-}" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured."
+            exit 1
+          fi
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          echo "::add-mask::$PRIVATE_KEY"
+
+          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          NONCE="$(cast nonce "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+
+          test "$CHAIN_ID" = "84532"
+          test "${DEPLOYER,,}" = "${EXPECTED_OPERATOR,,}"
+          test "$REGISTRY_CODE" != "0x"
+          if [ "$NONCE" != "$EXPECTED_NONCE" ]; then
+            echo "Expected operator nonce $EXPECTED_NONCE, received $NONCE. Refusing deployment."
+            exit 1
+          fi
+          if [ "$BALANCE_WEI" -le 0 ]; then
+            echo "Operator has no Base Sepolia ETH."
+            exit 1
+          fi
+
+          echo "DEPLOYER_PRIVATE_KEY=$PRIVATE_KEY" >> "$GITHUB_ENV"
+          echo "DEPLOYER_ADDRESS=$DEPLOYER" >> "$GITHUB_ENV"
+          echo "DEPLOYER_NONCE_BEFORE=$NONCE" >> "$GITHUB_ENV"
+          echo "DEPLOYER_BALANCE_BEFORE=$BALANCE_WEI" >> "$GITHUB_ENV"
+          echo "TESTNET_OPERATOR=$DEPLOYER" >> "$GITHUB_ENV"
+
+      - name: Record exact preflight before any broadcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/economic-stack-preflight.md <<EOF
+          ## Base Sepolia economic-stack deployment preflight: PASS
+
+          - Run: \`$GITHUB_RUN_ID\`
+          - Reviewed source: \`$SOURCE_COMMIT\`
+          - Operator: \`$DEPLOYER_ADDRESS\`
+          - Starting nonce: \`$DEPLOYER_NONCE_BEFORE\`
+          - Starting balance: \`$DEPLOYER_BALANCE_BEFORE wei\`
+          - Chain ID: \`84532\`
+          - Registry: \`$TRADE_PROOF_REGISTRY\`
+
+          Simulation will run before the single guarded broadcast. A failed or partial broadcast must not be retried until nonce and transaction history are inspected.
+          EOF
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo moseszhu999/chaintrace-contracts \
+            --body-file /tmp/economic-stack-preflight.md
+
+      - name: Simulate exact economic-stack deployment
+        working-directory: reviewed-source
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
+          forge script \
+            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --private-key "$DEPLOYER_PRIVATE_KEY" \
+            -vvv
+
+      - name: Broadcast exact economic-stack deployment once
+        working-directory: reviewed-source
+        shell: bash
+        run: |
+          set +x
+          set -euo pipefail
+          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
+          forge script \
+            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --private-key "$DEPLOYER_PRIVATE_KEY" \
+            --broadcast \
+            --slow \
+            -vvv
+
+      - name: Verify chain state and create canonical evidence
+        env:
+          BROADCAST_FILE: reviewed-source/broadcast/DeployTradeProofEconomicStack.s.sol/84532/run-latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          python control/tools/finalize-base-sepolia-economic-stack-v0.1.py
+          cp "$BROADCAST_FILE" deployment-output/foundry-broadcast.json
+
+      - name: Upload canonical deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradeproof-base-sepolia-economic-stack-v0.1
+          path: deployment-output/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish canonical deployment result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo moseszhu999/chaintrace-contracts \
+            --body-file deployment-output/pr-comment.md
+
+      - name: Record bounded deployment failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat > /tmp/economic-stack-failure.md <<EOF
+          Base Sepolia economic-stack deployment did not complete.
+
+          - Run: \`$GITHUB_RUN_ID\`
+          - Reviewed source: \`$SOURCE_COMMIT\`
+          - Expected starting nonce: \`2\`
+
+          No retry is authorized until this run is inspected for whether any transaction was broadcast and the operator nonce is checked again.
+          EOF
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo moseszhu999/chaintrace-contracts \
+            --body-file /tmp/economic-stack-failure.md
