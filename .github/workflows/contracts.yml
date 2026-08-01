@@ -181,6 +181,7 @@ jobs:
       - name: Publish exact read-only result to carrier PR
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -206,5 +207,3 @@ jobs:
             echo "Operator nonce is not the expected clean baseline." >&2
             exit 1
           fi
-        env:
-          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
