@@ -1,0 +1,17 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "contract": "TradeProofRegistry",
+  "address": "0xad1c714140ceb8ed7c5234d939a06926f5edaba2",
+  "deployer": "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9",
+  "deploymentTransaction": "0x6ffcae50367e9087c736ff5c7edd7d30483aedb0e8082488a0d8a8784cbdd31c",
+  "deploymentBlock": 44891502,
+  "sourceCommit": "27248faeed7f3eb88428fa8ce7979223e088429f",
+  "solcVersion": "0.8.24",
+  "deployedBytecodeBytes": 2433,
+  "digestProfile": "trade-proof-passport-jcs-keccak256-v0.1",
+  "bytecodeVerified": true,
+  "verifiedOnExplorer": false,
+  "canonical": true,
+  "status": "deployed-source-verification-pending"
+}
