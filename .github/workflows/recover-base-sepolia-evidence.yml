@@ -1,0 +1,155 @@
+name: Recover Base Sepolia deployment evidence
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+  CONTRACT_ADDRESS: 0x6eE7ec00035b17C8D1dE1D24458552441D8A93c7
+  DEPLOYER_ADDRESS: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+
+jobs:
+  recover:
+    name: Verify bytecode and recover creation transaction
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Recover deployment evidence from Base Sepolia
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-output
+          python - <<'PY'
+          import concurrent.futures
+          import json
+          import os
+          import urllib.request
+
+          rpc_url = os.environ["BASE_SEPOLIA_RPC_URL"]
+          deployer = os.environ["DEPLOYER_ADDRESS"].lower()
+          contract_address = os.environ["CONTRACT_ADDRESS"].lower()
+
+          def rpc(method, params):
+              payload = json.dumps({
+                  "jsonrpc": "2.0",
+                  "id": 1,
+                  "method": method,
+                  "params": params,
+              }).encode()
+              request = urllib.request.Request(
+                  rpc_url,
+                  data=payload,
+                  headers={"content-type": "application/json"},
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.loads(response.read().decode())
+              if "error" in result:
+                  raise RuntimeError(result["error"])
+              return result["result"]
+
+          chain_id = int(rpc("eth_chainId", []), 16)
+          if chain_id != 84532:
+              raise RuntimeError(f"Expected Base Sepolia chain ID 84532, received {chain_id}")
+
+          bytecode = rpc("eth_getCode", [contract_address, "latest"])
+          if bytecode == "0x":
+              raise RuntimeError(f"No deployed bytecode found at {contract_address}")
+
+          deployer_nonce = int(rpc("eth_getTransactionCount", [deployer, "latest"]), 16)
+          if deployer_nonce < 1:
+              raise RuntimeError("Deployer nonce does not show a confirmed transaction")
+
+          latest = int(rpc("eth_blockNumber", []), 16)
+          block_numbers = list(range(latest, max(-1, latest - 1800), -1))
+
+          def fetch_block(number):
+              return rpc("eth_getBlockByNumber", [hex(number), True])
+
+          candidate_hashes = []
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+              for block in executor.map(fetch_block, block_numbers):
+                  if not block:
+                      continue
+                  for transaction in block.get("transactions", []):
+                      if transaction.get("from", "").lower() != deployer:
+                          continue
+                      if transaction.get("to") is not None:
+                          continue
+                      candidate_hashes.append(transaction["hash"])
+
+          found = None
+          for transaction_hash in candidate_hashes:
+              receipt = rpc("eth_getTransactionReceipt", [transaction_hash])
+              if not receipt:
+                  continue
+              receipt_contract = (receipt.get("contractAddress") or "").lower()
+              if receipt_contract != contract_address:
+                  continue
+              found = {
+                  "transactionHash": transaction_hash,
+                  "blockNumber": str(int(receipt["blockNumber"], 16)),
+                  "status": int(receipt["status"], 16),
+              }
+              break
+
+          if not found:
+              raise RuntimeError(
+                  "Contract bytecode exists, but its creation transaction was not found "
+                  "within the most recent 1800 Base Sepolia blocks"
+              )
+          if found["status"] != 1:
+              raise RuntimeError("Recovered deployment transaction did not succeed")
+
+          evidence = {
+              "network": "base-sepolia",
+              "chainId": chain_id,
+              "contractName": "TradeProofRegistry",
+              "address": os.environ["CONTRACT_ADDRESS"],
+              "transactionHash": found["transactionHash"],
+              "blockNumber": found["blockNumber"],
+              "deployer": os.environ["DEPLOYER_ADDRESS"],
+              "registrySourceCommit": "27248faeed7f3eb88428fa8ce7979223e088429f",
+              "bytecodeSizeBytes": (len(bytecode) - 2) // 2,
+              "bytecodeVerified": True,
+              "sourceVerification": "not-yet-recorded",
+              "explorerUrl": (
+                  "https://sepolia.basescan.org/address/"
+                  + os.environ["CONTRACT_ADDRESS"]
+              ),
+          }
+          with open("deployment-output/base-sepolia.json", "w", encoding="utf-8") as handle:
+              json.dump(evidence, handle, indent=2)
+              handle.write("\n")
+          print(json.dumps(evidence, indent=2))
+          PY
+
+      - name: Publish deployment summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ADDRESS="$(jq -r '.address' deployment-output/base-sepolia.json)"
+          TX_HASH="$(jq -r '.transactionHash' deployment-output/base-sepolia.json)"
+          BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/base-sepolia.json)"
+          BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployment-output/base-sepolia.json)"
+          {
+            echo "## TradeProofRegistry Base Sepolia deployment"
+            echo ""
+            echo "- Address: \`$ADDRESS\`"
+            echo "- Transaction: \`$TX_HASH\`"
+            echo "- Block: \`$BLOCK_NUMBER\`"
+            echo "- Bytecode: \`$BYTECODE_SIZE bytes\`"
+            echo "- Chain ID: \`84532\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-proof-registry-base-sepolia-evidence
+          path: deployment-output/base-sepolia.json
+          if-no-files-found: error
