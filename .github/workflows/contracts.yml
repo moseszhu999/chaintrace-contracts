@@ -84,7 +84,7 @@ jobs:
     name: One-shot canonical Base Sepolia deployment
     if: >-
       github.event_name == 'pull_request' &&
-      github.head_ref == 'deploy/base-sepolia-trade-proof-registry-canonical-v1'
+      github.head_ref == 'deploy/base-sepolia-trade-proof-registry-canonical-v2'
     needs: [foundry, dlsk]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -93,7 +93,7 @@ jobs:
       issues: write
       pull-requests: write
     concurrency:
-      group: trade-proof-registry-base-sepolia-canonical-v1
+      group: trade-proof-registry-base-sepolia-canonical-v2
       cancel-in-progress: false
     env:
       BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
@@ -207,7 +207,7 @@ jobs:
       - name: Upload canonical evidence
         uses: actions/upload-artifact@v4
         with:
-          name: trade-proof-registry-base-sepolia-canonical
+          name: trade-proof-registry-base-sepolia-canonical-v2
           path: deployment-output/
           if-no-files-found: error
 
