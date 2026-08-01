@@ -595,7 +595,7 @@ contract TradeProofContribution {
         emit AppealResolved(receiptId, msg.sender, restored, restoredPoints, decisionHash);
     }
 
-    /// @notice Freeze a season after its review and appeal windows have elapsed.
+    /// @notice Permanently close a season after its review and appeal windows have elapsed.
     function closeSeason(uint32 season) external onlyOwner {
         if (seasonClosed[season]) revert SeasonAlreadyClosed(season);
         uint64 closableAt = seasonClosableAt(season);

@@ -303,7 +303,9 @@ contract TradeProofContributionTest {
 
         bytes32 eleventhResponse = bytes32(uint256(1010));
         _anchorResponse(BOB, eleventhResponse, PASSPORT_A);
-        bytes32 pairKey = keccak256(abi.encode(ALICE, BOB));
+        bytes32 pairKey = uint160(ALICE) < uint160(BOB)
+            ? keccak256(abi.encode(ALICE, BOB))
+            : keccak256(abi.encode(BOB, ALICE));
         vm.expectRevert(
             abi.encodeWithSelector(
                 TradeProofContribution.PairSeasonCapExceeded.selector, pairKey, 330
