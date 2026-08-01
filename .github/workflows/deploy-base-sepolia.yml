@@ -1,4 +1,4 @@
-name: Recover TradeProofRegistry Base Sepolia deployment
+name: Deploy canonical TradeProofRegistry to Base Sepolia
 
 on:
   push:
@@ -10,133 +10,172 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: trade-proof-registry-base-sepolia-canonical-deploy
+  cancel-in-progress: false
+
 env:
   BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
-  BLOCKSCOUT_API_URL: https://base-sepolia.blockscout.com/api/v2
-  CONTRACT_ADDRESS: 0x6eE7ec00035b17C8D1dE1D24458552441D8A93c7
-  DEPLOYER_ADDRESS: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+  DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+  EXPECTED_DEPLOYER: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+  EXPECTED_NONCE: "1"
 
 jobs:
-  recover:
-    name: Verify bytecode and recover accepted deployment
+  deploy:
+    name: Broadcast one canonical registry deployment
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Check out deployment carrier
+      - name: Check out exact deployment source
         uses: actions/checkout@v4
 
-      - name: Recover deployment evidence
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Validate network, wallet, nonce, and balance
+        id: preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOYER_PRIVATE_KEY:-}" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured."
+            exit 1
+          fi
+          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          NONCE="$(cast nonce "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+
+          test "$CHAIN_ID" = "84532"
+          if [ "${DEPLOYER,,}" != "${EXPECTED_DEPLOYER,,}" ]; then
+            echo "Unexpected deployer: $DEPLOYER"
+            exit 1
+          fi
+          if [ "$NONCE" != "$EXPECTED_NONCE" ]; then
+            echo "Expected deployer nonce $EXPECTED_NONCE, received $NONCE. Refusing another deployment."
+            exit 1
+          fi
+          if [ "$BALANCE_WEI" -lt 20000000000000 ]; then
+            echo "Insufficient Base Sepolia ETH: $BALANCE_WEI wei"
+            exit 1
+          fi
+
+          echo "PRIVATE_KEY=$PRIVATE_KEY" >> "$GITHUB_ENV"
+          echo "DEPLOYER_ADDRESS=$DEPLOYER" >> "$GITHUB_ENV"
+          echo "Preflight: chain=$CHAIN_ID deployer=$DEPLOYER nonce=$NONCE balanceWei=$BALANCE_WEI"
+
+      - name: Build and test exact source
+        run: |
+          forge build --sizes
+          forge test -vvv
+
+      - name: Broadcast canonical deployment
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p deployment-output
-          python - <<'PY'
-          import json
+          forge create contracts/TradeProofRegistry.sol:TradeProofRegistry \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --private-key "$PRIVATE_KEY" \
+            --broadcast \
+            --json | tee deployment-output/create.json
+
+          CONTRACT_ADDRESS="$(jq -r '.deployedTo // .deployed_to // empty' deployment-output/create.json)"
+          TX_HASH="$(jq -r '.transactionHash // .transaction_hash // empty' deployment-output/create.json)"
+          if [ -z "$CONTRACT_ADDRESS" ] || [ -z "$TX_HASH" ]; then
+            echo "Unable to parse canonical deployment output."
+            cat deployment-output/create.json
+            exit 1
+          fi
+          echo "CONTRACT_ADDRESS=$CONTRACT_ADDRESS" >> "$GITHUB_ENV"
+          echo "TX_HASH=$TX_HASH" >> "$GITHUB_ENV"
+
+      - name: Verify receipt and deployed bytecode
+        shell: bash
+        run: |
+          set -euo pipefail
+          cast receipt "$TX_HASH" --rpc-url "$BASE_SEPOLIA_RPC_URL" --json > deployment-output/receipt.json
+          STATUS="$(jq -r '.status' deployment-output/receipt.json)"
+          RECEIPT_ADDRESS="$(jq -r '.contractAddress // .contract_address // empty' deployment-output/receipt.json)"
+          BLOCK_HEX="$(jq -r '.blockNumber // .block_number' deployment-output/receipt.json)"
+          if [ "$STATUS" != "0x1" ] && [ "$STATUS" != "1" ]; then
+            echo "Canonical deployment receipt failed with status $STATUS"
+            exit 1
+          fi
+          if [ "${RECEIPT_ADDRESS,,}" != "${CONTRACT_ADDRESS,,}" ]; then
+            echo "Receipt address mismatch: $RECEIPT_ADDRESS vs $CONTRACT_ADDRESS"
+            exit 1
+          fi
+          BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          if [ "$BYTECODE" = "0x" ]; then
+            echo "No deployed bytecode found at $CONTRACT_ADDRESS"
+            exit 1
+          fi
+
+          export BLOCK_HEX BYTECODE
+          BLOCK_NUMBER="$(python - <<'PY'
           import os
-          import urllib.request
-
-          rpc_url = os.environ["BASE_SEPOLIA_RPC_URL"]
-          api_url = os.environ["BLOCKSCOUT_API_URL"]
-          contract_address = os.environ["CONTRACT_ADDRESS"]
-          deployer_address = os.environ["DEPLOYER_ADDRESS"]
-
-          def get_json(url):
-              request = urllib.request.Request(url, headers={"accept": "application/json"})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.loads(response.read().decode())
-
-          def rpc(method, params):
-              payload = json.dumps({
-                  "jsonrpc": "2.0",
-                  "id": 1,
-                  "method": method,
-                  "params": params,
-              }).encode()
-              request = urllib.request.Request(
-                  rpc_url,
-                  data=payload,
-                  headers={"content-type": "application/json"},
-              )
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  result = json.loads(response.read().decode())
-              if "error" in result:
-                  raise RuntimeError(result["error"])
-              return result["result"]
-
-          address_info = get_json(f"{api_url}/addresses/{contract_address}")
-          tx_hash = address_info.get("creation_transaction_hash")
-          creator = address_info.get("creator_address_hash")
-          if not tx_hash:
-              raise RuntimeError("Blockscout has not indexed a creation transaction for the contract")
-          if not creator or creator.lower() != deployer_address.lower():
-              raise RuntimeError(f"Unexpected contract creator: {creator}")
-
-          chain_id = int(rpc("eth_chainId", []), 16)
-          if chain_id != 84532:
-              raise RuntimeError(f"Expected chain ID 84532, received {chain_id}")
-
-          bytecode = rpc("eth_getCode", [contract_address, "latest"])
-          if bytecode == "0x":
-              raise RuntimeError(f"No deployed bytecode found at {contract_address}")
-
-          receipt = rpc("eth_getTransactionReceipt", [tx_hash])
-          if not receipt:
-              raise RuntimeError("Creation transaction receipt is unavailable")
-          if int(receipt["status"], 16) != 1:
-              raise RuntimeError("Creation transaction failed")
-          if (receipt.get("contractAddress") or "").lower() != contract_address.lower():
-              raise RuntimeError("Receipt contract address does not match expected address")
-
-          transaction = rpc("eth_getTransactionByHash", [tx_hash])
-          if not transaction:
-              raise RuntimeError("Creation transaction is unavailable")
-          if transaction.get("from", "").lower() != deployer_address.lower():
-              raise RuntimeError("Creation transaction deployer does not match expected deployer")
-          if transaction.get("to") is not None:
-              raise RuntimeError("Recovered transaction is not a contract creation")
-          if int(transaction.get("nonce", "0x0"), 16) != 0:
-              raise RuntimeError("Creation transaction nonce is not zero")
-
-          evidence = {
-              "network": "base-sepolia",
-              "chainId": chain_id,
-              "contractName": "TradeProofRegistry",
-              "address": contract_address,
-              "transactionHash": tx_hash,
-              "blockNumber": str(int(receipt["blockNumber"], 16)),
-              "deployer": deployer_address,
-              "registrySourceCommit": "27248faeed7f3eb88428fa8ce7979223e088429f",
-              "deploymentCarrierCommit": os.environ["GITHUB_SHA"],
-              "bytecodeSizeBytes": (len(bytecode) - 2) // 2,
-              "bytecodeVerified": True,
-              "sourceVerification": "not-yet-recorded",
-              "explorerUrl": f"https://sepolia.basescan.org/address/{contract_address}",
-          }
-          with open("deployment-output/base-sepolia.json", "w", encoding="utf-8") as handle:
-              json.dump(evidence, handle, indent=2)
-              handle.write("\n")
-          print(json.dumps(evidence, indent=2))
+          value = os.environ['BLOCK_HEX']
+          print(int(value, 16) if value.startswith('0x') else int(value))
           PY
+          )"
+          BYTECODE_SIZE="$(( (${#BYTECODE} - 2) / 2 ))"
 
-      - name: Upload deployment evidence
+          jq -n \
+            --arg network "base-sepolia" \
+            --argjson chainId 84532 \
+            --arg contractName "TradeProofRegistry" \
+            --arg address "$CONTRACT_ADDRESS" \
+            --arg transactionHash "$TX_HASH" \
+            --arg blockNumber "$BLOCK_NUMBER" \
+            --arg deployer "$DEPLOYER_ADDRESS" \
+            --arg registrySourceCommit "27248faeed7f3eb88428fa8ce7979223e088429f" \
+            --arg deploymentCarrierCommit "$GITHUB_SHA" \
+            --arg bytecodeSizeBytes "$BYTECODE_SIZE" \
+            --arg explorerUrl "https://sepolia.basescan.org/address/$CONTRACT_ADDRESS" \
+            '{
+              network: $network,
+              chainId: $chainId,
+              contractName: $contractName,
+              address: $address,
+              transactionHash: $transactionHash,
+              blockNumber: $blockNumber,
+              deployer: $deployer,
+              registrySourceCommit: $registrySourceCommit,
+              deploymentCarrierCommit: $deploymentCarrierCommit,
+              bytecodeSizeBytes: ($bytecodeSizeBytes | tonumber),
+              bytecodeVerified: true,
+              sourceVerification: "not-yet-recorded",
+              explorerUrl: $explorerUrl,
+              canonical: true
+            }' > deployment-output/base-sepolia.json
+          cat deployment-output/base-sepolia.json
+
+      - name: Upload canonical deployment evidence
         uses: actions/upload-artifact@v4
         with:
-          name: trade-proof-registry-base-sepolia
-          path: deployment-output/base-sepolia.json
+          name: trade-proof-registry-base-sepolia-canonical
+          path: deployment-output/
           if-no-files-found: error
 
-      - name: Publish result to deployment carrier PR
+      - name: Publish canonical result to deployment carrier PR
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          TX_HASH="$(jq -r '.transactionHash' deployment-output/base-sepolia.json)"
           BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/base-sepolia.json)"
           BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployment-output/base-sepolia.json)"
           cat > deployment-output/pr-comment.md <<EOF
-          <!-- trade-proof-deployment-result -->
-          ## Base Sepolia deployment: PASS
+          <!-- trade-proof-canonical-deployment-result -->
+          ## Canonical Base Sepolia deployment: PASS
 
           - Contract: \`TradeProofRegistry\`
           - Address: \`$CONTRACT_ADDRESS\`
@@ -152,7 +191,7 @@ jobs:
           Explorer: https://sepolia.basescan.org/address/$CONTRACT_ADDRESS
           EOF
 
-          COMMENT_ID="$(gh api repos/moseszhu999/chaintrace-contracts/issues/2/comments --paginate --jq '.[] | select(.body | contains("<!-- trade-proof-deployment-result -->")) | .id' | tail -n 1)"
+          COMMENT_ID="$(gh api repos/moseszhu999/chaintrace-contracts/issues/2/comments --paginate --jq '.[] | select(.body | contains("<!-- trade-proof-canonical-deployment-result -->")) | .id' | tail -n 1)"
           if [ -n "$COMMENT_ID" ]; then
             gh api --method PATCH "repos/moseszhu999/chaintrace-contracts/issues/comments/$COMMENT_ID" --raw-field body="$(cat deployment-output/pr-comment.md)"
           else
