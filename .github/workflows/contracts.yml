@@ -24,16 +24,16 @@ jobs:
         with:
           version: stable
 
-      - name: Apply bounded implementation fix and canonical formatting
+      - name: Apply bounded implementation fixes and canonical formatting
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/trade-proof-contribution-v0.1'
         run: |
           python tools/apply-contribution-fix.py
           forge fmt contracts/TradeProofContribution.sol test/TradeProofContribution.t.sol
-          if ! git diff --quiet; then
+          git add contracts/TradeProofContribution.sol test/TradeProofContribution.t.sol
+          if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add contracts/TradeProofContribution.sol test/TradeProofContribution.t.sol
-            git commit -m "fix: reduce contribution validation stack depth"
+            git commit -m "fix: finalize contribution validation and tests"
             git push origin HEAD:${{ github.head_ref }}
           fi
 
