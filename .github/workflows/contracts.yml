@@ -26,7 +26,9 @@ jobs:
         run: |
           forge fmt --check \
             contracts/TradeProofRegistry.sol \
+            contracts/TradeProofContribution.sol \
             test/TradeProofRegistry.t.sol \
+            test/TradeProofContribution.t.sol \
             script/DeployTradeProofRegistry.s.sol
 
       - name: Build contracts
@@ -70,8 +72,7 @@ jobs:
           import json
           from pathlib import Path
 
-          report_path = Path("reports/dlsk/report.json")
-          report = json.loads(report_path.read_text(encoding="utf-8"))
+          report = json.loads(Path("reports/dlsk/report.json").read_text(encoding="utf-8"))
           counts = report.get("counts", {})
           high = int(counts.get("HIGH", 0))
           critical = int(counts.get("CRITICAL", 0))
