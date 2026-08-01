@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   foundry:
@@ -16,26 +16,11 @@ jobs:
     steps:
       - name: Checkout contracts
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-
-      - name: Apply bounded implementation fixes and canonical formatting
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/trade-proof-contribution-v0.1'
-        run: |
-          python tools/apply-contribution-fix.py
-          forge fmt contracts/TradeProofContribution.sol test/TradeProofContribution.t.sol
-          git add contracts/TradeProofContribution.sol test/TradeProofContribution.t.sol
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "fix: finalize contribution validation and tests"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
 
       - name: Check canonical contract formatting
         run: |
@@ -82,4 +67,16 @@ jobs:
             --no-slither
 
       - name: Block high or critical findings
-        run: python tools/print-dlsk-high.py
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("reports/dlsk/report.json").read_text(encoding="utf-8"))
+          counts = report.get("counts", {})
+          high = int(counts.get("HIGH", 0))
+          critical = int(counts.get("CRITICAL", 0))
+          print(f"DLSK findings: HIGH={high}, CRITICAL={critical}")
+          if high or critical:
+              raise SystemExit("DLSK high-risk gate failed")
+          PY
