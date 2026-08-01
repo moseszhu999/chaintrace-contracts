@@ -7,26 +7,31 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
   CONTRACT_ADDRESS: 0x6eE7ec00035b17C8D1dE1D24458552441D8A93c7
   DEPLOYER_ADDRESS: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+  DEPLOYMENT_TIME_UTC: 2026-08-01T01:27:23+00:00
 
 jobs:
   recover:
-    name: Verify bytecode and recover creation transaction
+    if: github.actor != 'github-actions[bot]'
+    name: Verify bytecode, recover creation transaction, and persist evidence
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Check out canonical repository
+        uses: actions/checkout@v4
+
       - name: Recover deployment evidence from Base Sepolia
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p deployment-output
+          mkdir -p deployments deployment-output
           python - <<'PY'
-          import concurrent.futures
+          from datetime import datetime
           import json
           import os
           import urllib.request
@@ -34,6 +39,7 @@ jobs:
           rpc_url = os.environ["BASE_SEPOLIA_RPC_URL"]
           deployer = os.environ["DEPLOYER_ADDRESS"].lower()
           contract_address = os.environ["CONTRACT_ADDRESS"].lower()
+          target_timestamp = int(datetime.fromisoformat(os.environ["DEPLOYMENT_TIME_UTC"]).timestamp())
 
           def rpc(method, params):
               payload = json.dumps({
@@ -66,42 +72,52 @@ jobs:
               raise RuntimeError("Deployer nonce does not show a confirmed transaction")
 
           latest = int(rpc("eth_blockNumber", []), 16)
-          block_numbers = list(range(latest, max(-1, latest - 1800), -1))
 
-          def fetch_block(number):
-              return rpc("eth_getBlockByNumber", [hex(number), True])
-
-          candidate_hashes = []
-          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-              for block in executor.map(fetch_block, block_numbers):
-                  if not block:
-                      continue
-                  for transaction in block.get("transactions", []):
-                      if transaction.get("from", "").lower() != deployer:
-                          continue
-                      if transaction.get("to") is not None:
-                          continue
-                      candidate_hashes.append(transaction["hash"])
+          # Binary-search the block nearest the known broadcast time. This avoids
+          # rate-limited full-chain scans against the public Base Sepolia RPC.
+          low = 0
+          high = latest
+          while low < high:
+              middle = (low + high) // 2
+              block = rpc("eth_getBlockByNumber", [hex(middle), False])
+              block_timestamp = int(block["timestamp"], 16)
+              if block_timestamp < target_timestamp:
+                  low = middle + 1
+              else:
+                  high = middle
+          center = low
 
           found = None
-          for transaction_hash in candidate_hashes:
-              receipt = rpc("eth_getTransactionReceipt", [transaction_hash])
-              if not receipt:
+          start = max(0, center - 180)
+          end = min(latest, center + 180)
+          for number in range(start, end + 1):
+              block = rpc("eth_getBlockByNumber", [hex(number), True])
+              if not block:
                   continue
-              receipt_contract = (receipt.get("contractAddress") or "").lower()
-              if receipt_contract != contract_address:
-                  continue
-              found = {
-                  "transactionHash": transaction_hash,
-                  "blockNumber": str(int(receipt["blockNumber"], 16)),
-                  "status": int(receipt["status"], 16),
-              }
-              break
+              for transaction in block.get("transactions", []):
+                  if transaction.get("from", "").lower() != deployer:
+                      continue
+                  if transaction.get("to") is not None:
+                      continue
+                  receipt = rpc("eth_getTransactionReceipt", [transaction["hash"]])
+                  if not receipt:
+                      continue
+                  receipt_contract = (receipt.get("contractAddress") or "").lower()
+                  if receipt_contract != contract_address:
+                      continue
+                  found = {
+                      "transactionHash": transaction["hash"],
+                      "blockNumber": str(int(receipt["blockNumber"], 16)),
+                      "status": int(receipt["status"], 16),
+                  }
+                  break
+              if found:
+                  break
 
           if not found:
               raise RuntimeError(
                   "Contract bytecode exists, but its creation transaction was not found "
-                  "within the most recent 1800 Base Sepolia blocks"
+                  "within the bounded deployment-time block window"
               )
           if found["status"] != 1:
               raise RuntimeError("Recovered deployment transaction did not succeed")
@@ -123,20 +139,24 @@ jobs:
                   + os.environ["CONTRACT_ADDRESS"]
               ),
           }
-          with open("deployment-output/base-sepolia.json", "w", encoding="utf-8") as handle:
-              json.dump(evidence, handle, indent=2)
-              handle.write("\n")
-          print(json.dumps(evidence, indent=2))
+          rendered = json.dumps(evidence, indent=2) + "\n"
+          for path in (
+              "deployments/base-sepolia.json",
+              "deployment-output/base-sepolia.json",
+          ):
+              with open(path, "w", encoding="utf-8") as handle:
+                  handle.write(rendered)
+          print(rendered)
           PY
 
       - name: Publish deployment summary
         shell: bash
         run: |
           set -euo pipefail
-          ADDRESS="$(jq -r '.address' deployment-output/base-sepolia.json)"
-          TX_HASH="$(jq -r '.transactionHash' deployment-output/base-sepolia.json)"
-          BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/base-sepolia.json)"
-          BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployment-output/base-sepolia.json)"
+          ADDRESS="$(jq -r '.address' deployments/base-sepolia.json)"
+          TX_HASH="$(jq -r '.transactionHash' deployments/base-sepolia.json)"
+          BLOCK_NUMBER="$(jq -r '.blockNumber' deployments/base-sepolia.json)"
+          BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployments/base-sepolia.json)"
           {
             echo "## TradeProofRegistry Base Sepolia deployment"
             echo ""
@@ -146,6 +166,20 @@ jobs:
             echo "- Bytecode: \`$BYTECODE_SIZE bytes\`"
             echo "- Chain ID: \`84532\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Persist canonical deployment manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add deployments/base-sepolia.json
+          if git diff --cached --quiet; then
+            echo "Canonical deployment manifest is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Record TradeProofRegistry Base Sepolia deployment evidence"
+          git push
 
       - name: Upload deployment evidence
         uses: actions/upload-artifact@v4
