@@ -30,9 +30,11 @@ jobs:
             contracts/TradeProofToken.sol \
             contracts/TradeProofTeamVesting.sol \
             contracts/TradeProofGenesis.sol \
+            contracts/TradeProofSeasonAllocation.sol \
             test/TradeProofRegistry.t.sol \
             test/TradeProofContribution.t.sol \
             test/TradeProofToken.t.sol \
+            test/TradeProofSeasonAllocation.t.sol \
             script/DeployTradeProofRegistry.s.sol
 
       - name: Build contracts

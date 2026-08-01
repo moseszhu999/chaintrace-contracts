@@ -11,13 +11,16 @@ TradeProofRegistry
 TradeProofContribution
   non-transferable contribution receipts and seasonal Proof Points
         ↓
+TradeProofSeasonAllocation
+  closed Points → public Merkle dataset → delayed TPROOF claims
+        ↓
 TradeProofGenesis
   atomic fixed-supply Token and team-vesting deployment
         ├─ TradeProofToken
         └─ TradeProofTeamVesting
 ```
 
-Token holdings, transfers, allowances, vesting, receipts, or Proof Points can never make a Passport, Response, evidence record, or real-world assertion valid.
+Token holdings, transfers, claims, allowances, vesting, receipts, or Proof Points can never make a Passport, Response, evidence record, or real-world assertion valid.
 
 ## TradeProofRegistry
 
@@ -69,11 +72,43 @@ automatic wallet-pair/season cap          300 points
 docs/trade-proof-contribution-v0.1.md
 ```
 
+## TradeProofSeasonAllocation
+
+`TradeProofSeasonAllocation` connects closed Proof Points to pre-funded TPROOF claims without a private application database.
+
+```text
+closed public Points
+→ deterministic square-root allocation dataset
+→ canonical dataset digest + sorted Merkle root
+→ seven-day public review delay
+→ exact funding from immutable community treasury
+→ immutable active root
+→ wallet or relayer submits proof
+→ final Points checked against TradeProofContribution
+→ exact Token transfer to leaf account
+```
+
+Fixed controls:
+
+```text
+minimum claim eligibility                   25 Points
+claim delay                                  7 days
+Season 0 Genesis Proof pool         10,000,000 TPROOF
+aggregate community commitment cap 450,000,000 TPROOF
+reward profile              TPROOF_SQRT_VERIFIED_POINTS_V0_1
+```
+
+Claim leaves are domain-separated by chain ID, allocation contract, season, revision, account, final Points, and amount. A proposed distribution can be cancelled and refunded only before activation. An active root cannot be rewritten, cancelled, or swept.
+
+The contract verifies Merkle inclusion and the final closed-season Points snapshot. The global square-root calculation remains reproducible public computation and must be independently recomputed from the published dataset before activation.
+
+```text
+docs/trade-proof-season-allocation-v0.1.md
+```
+
 ## Fixed-supply TPROOF genesis
 
 ### TradeProofToken
-
-Minimal ERC-20 properties:
 
 ```text
 Name: TradeProof Token
@@ -101,11 +136,9 @@ Security and standards reserve        50,000,000   5%
                                   1,000,000,000 100%
 ```
 
-The liquidity reserve is only an allocation bucket. No pool, sale, price, market, claim, or trading venue is implemented.
+The liquidity reserve is only an allocation bucket. No pool, sale, price, market, claim, or trading venue is created by Token genesis.
 
 ### TradeProofTeamVesting
-
-The full team allocation is held by an immutable escrow:
 
 ```text
 allocation: 150,000,000 TPROOF
@@ -120,14 +153,7 @@ At the 12-month cliff, 25% is vested. Anyone may trigger a release, but vested t
 
 ### TradeProofGenesis
 
-The atomic genesis factory:
-
-1. validates six distinct nonzero economic beneficiaries;
-2. deploys the fixed-supply Token;
-3. deploys team vesting;
-4. transfers all 150,000,000 team tokens into vesting;
-5. verifies one-billion total supply, exact escrow balance, and zero factory balance;
-6. exposes no post-deployment control function.
+The atomic genesis factory validates six distinct recipients, deploys the Token and vesting escrow, transfers all 150,000,000 team tokens into vesting, verifies exact supply and balances, retains zero Token balance, and exposes no post-deployment control function.
 
 ```text
 docs/trade-proof-token-genesis-v0.1.md
@@ -160,7 +186,7 @@ Explorer source verification: pending
 deployments/base-sepolia.json
 ```
 
-`TradeProofContribution`, `TradeProofToken`, `TradeProofTeamVesting`, and `TradeProofGenesis` are not deployed by this implementation branch.
+Only the Registry is deployed. Contribution, Token, vesting, genesis, and seasonal allocation remain source-only until separate deployment gates pass.
 
 ## Legacy proof primitives
 
@@ -170,7 +196,7 @@ contracts/BatchRegistry.sol
 contracts/EventRegistry.sol
 ```
 
-These are retained historical primitives, not competing Passport, contribution, or Token owners.
+These are retained historical primitives, not competing Passport, contribution, Token, or allocation owners.
 
 ## Current implementation scope
 
@@ -185,17 +211,22 @@ Implemented in source:
 - exact six-bucket genesis allocation;
 - immutable team cliff and linear vesting;
 - atomic genesis invariant checks;
+- closed-season Merkle proposal, funding, delay, activation, and claim verification;
+- Points snapshot checks and one claim per wallet;
+- Season 0 exact 10,000,000 TPROOF pool;
+- aggregate 450,000,000 community commitment ceiling;
 - Foundry and DLSK CI gates.
 
 Not implemented or authorized:
 
-- Token deployment;
-- public claim or Genesis Proof distribution;
-- square-root seasonal allocation execution;
+- deployment of Contribution, Token, vesting, genesis, or allocation contracts;
+- active public claim or Genesis Proof distribution;
+- canonical allocation dataset compiler and rounding profile;
 - sale, presale, auction, pricing, or liquidity action;
 - staking yield, revenue share, dividend, or redemption;
 - governance execution;
 - production multisig or timelock;
+- claim expiry or active-fund sweep;
 - payment, settlement, lending, custody, or asset tokenization;
 - identity or organizational-authority verification;
 - formal external smart-contract audit;
@@ -216,8 +247,10 @@ Pull requests also run DLSK and block any HIGH or CRITICAL finding. DLSK and Fou
 ```text
 Proof, not exposure.
 Contribution before liquidity.
+Public allocation data, not a private eligibility database.
 Fixed supply, no hidden mint.
 Long vesting, no instant team unlock.
+Immutable active roots, no silent claim rewrite.
 Community economics, not control of evidence validity.
 No public launch before technical, security, governance, and legal gates.
 ```
