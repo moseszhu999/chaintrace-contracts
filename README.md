@@ -186,23 +186,65 @@ Explorer source verification: pending
 deployments/base-sepolia.json
 ```
 
-Only the Registry is currently deployed. Contribution, Token, vesting, genesis, seasonal allocation, and testnet treasury vaults remain source-only until separate deployment gates pass.
+The Registry remains an independently deployed proof primitive. Its evidence validity and current-state rules do not depend on TPROOF, Proof Points, claims, or treasury balances.
 
-## Base Sepolia economic-stack deployment preparation
+## Canonical Base Sepolia economic-stack deployment
 
-The bounded deployment package adds:
+The bounded testnet economic stack was deployed from reviewed source commit:
 
 ```text
-contracts/TradeProofTestnetTreasuryVault.sol
-script/DeployTradeProofEconomicStack.s.sol
-test/TradeProofEconomicStack.t.sol
-deployments/base-sepolia-economic-stack.template.json
-docs/base-sepolia-economic-stack-deployment-v0.1.md
+005839c62c1a67392b2f5cced25374f5b48fecc1
 ```
 
-The script reuses the canonical Registry and deploys Contribution, fixed-supply Token genesis, team vesting, seasonal allocation, and five visibly centralized Base Sepolia treasury vaults. The five vaults and the testnet operator are not a production governance design.
+Deployment status:
 
-A successful testnet deployment must begin with no season proposal, no allocation funding, no active claim, no Token sale, no liquidity pool, and no market. The deployment branch prepares source and tests only; transaction broadcast and canonical evidence remain a separate operational step.
+```text
+Network: Base Sepolia
+Chain ID: 84532
+Operator: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+Transactions: 8
+Operator nonce: 2 → 10
+Block range: 44901311–44901318
+Bytecode checks: PASS
+Status: deployed-testnet-inactive
+Explorer source verification: pending
+```
+
+Canonical addresses:
+
+```text
+TradeProofContribution:         0xcb33eA69dDa48f2A345Fc1F2A3B85f329a5eb1E0
+TradeProofGenesis:              0x2a00707664d738d41EDc4e453F173D38f6D83ECb
+TradeProofToken:                0xd0a60427482C2cBE1C6566772DC5838AA06DED80
+TradeProofTeamVesting:          0x65Ab9CE997975f18b6a06957D75AA5a00b3dc467
+TradeProofSeasonAllocation:     0x0bFd6CEab5dB51d7B53789484ECD147B10D7fC65
+Community treasury:             0xBf485863EA313b75dC6cf389A9A86Bd98a0dF910
+Ecosystem treasury:             0x3Ca8dd7dF625d51aF1Da77716269D788DD869089
+Adoption treasury:              0x895C0C8749EF5DE94BA544cf28dDEd68fd6b3Aba
+Liquidity reserve:              0xC7F135d85aAe58bd409F7263FadbD041d6031B92
+Security reserve:               0x594ce0619d5bAcA2F66992c89610cb57A704d0AB
+```
+
+Canonical machine-readable evidence:
+
+```text
+deployments/base-sepolia-economic-stack.json
+```
+
+The deployment and a later read-only recovery gate verified all eight receipts, all ten deployed bytecodes, the fixed 1,000,000,000 TPROOF supply, exact 45/20/15/10/5/5 allocations, Registry and contract references, five vault purpose hashes, and the inactive initial state.
+
+The current deployment does **not** authorize or activate:
+
+```text
+Season 0 proposal or funding
+public TPROOF claim
+Token sale, presale, auction, or price
+liquidity pool or market
+mainnet deployment
+production governance
+```
+
+The five testnet vaults and single testnet operator are explicitly not a production governance design.
 
 ## Legacy proof primitives
 
@@ -216,7 +258,7 @@ These are retained historical primitives, not competing Passport, contribution, 
 
 ## Current implementation scope
 
-Implemented in source:
+Implemented in source and Base Sepolia testnet deployment:
 
 - Passport and Response digest anchoring;
 - supersession and revocation history;
@@ -231,11 +273,12 @@ Implemented in source:
 - Points snapshot checks and one claim per wallet;
 - Season 0 exact 10,000,000 TPROOF pool;
 - aggregate 450,000,000 community commitment ceiling;
+- canonical Base Sepolia Registry and inactive economic-stack deployments;
+- machine-readable deployment evidence and bytecode checks;
 - Foundry and DLSK CI gates.
 
 Not implemented or authorized:
 
-- deployment of Contribution, Token, vesting, genesis, or allocation contracts;
 - active public claim or Genesis Proof distribution;
 - canonical allocation dataset compiler and rounding profile;
 - sale, presale, auction, pricing, or liquidity action;
@@ -245,6 +288,7 @@ Not implemented or authorized:
 - claim expiry or active-fund sweep;
 - payment, settlement, lending, custody, or asset tokenization;
 - identity or organizational-authority verification;
+- production or mainnet deployment of the economic stack;
 - formal external smart-contract audit;
 - legal launch clearance.
 

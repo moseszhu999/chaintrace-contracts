@@ -1,0 +1,141 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "status": "deployed-testnet-inactive",
+  "sourceCommit": "005839c62c1a67392b2f5cced25374f5b48fecc1",
+  "registry": {
+    "address": "0xad1c714140ceb8ed7c5234d939a06926f5edaba2",
+    "existingCanonicalDeployment": true
+  },
+  "operator": "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9",
+  "contracts": {
+    "communityTreasury": "0xBf485863EA313b75dC6cf389A9A86Bd98a0dF910",
+    "ecosystemTreasury": "0x3Ca8dd7dF625d51aF1Da77716269D788DD869089",
+    "adoptionTreasury": "0x895C0C8749EF5DE94BA544cf28dDEd68fd6b3Aba",
+    "liquidityReserve": "0xC7F135d85aAe58bd409F7263FadbD041d6031B92",
+    "securityReserve": "0x594ce0619d5bAcA2F66992c89610cb57A704d0AB",
+    "contribution": "0xcb33eA69dDa48f2A345Fc1F2A3B85f329a5eb1E0",
+    "genesis": "0x2a00707664d738d41EDc4e453F173D38f6D83ECb",
+    "seasonAllocation": "0x0bFd6CEab5dB51d7B53789484ECD147B10D7fC65",
+    "token": "0xd0a60427482C2cBE1C6566772DC5838AA06DED80",
+    "teamVesting": "0x65Ab9CE997975f18b6a06957D75AA5a00b3dc467"
+  },
+  "token": {
+    "name": "TradeProof Token",
+    "symbol": "TPROOF",
+    "decimals": 18,
+    "maxSupplyTokens": "1000000000",
+    "totalSupplyBaseUnits": "1000000000000000000000000000",
+    "publicSaleActive": false,
+    "claimActive": false,
+    "liquidityPoolActive": false
+  },
+  "deployment": {
+    "transactions": [
+      {
+        "nonce": 2,
+        "hash": "0x3918084bb35a9007b77f00068fa039f0dae3a0618128a3429e7a4f745ef7893f",
+        "blockNumber": 44901311,
+        "contract": "communityTreasury",
+        "contractAddress": "0xBf485863EA313b75dC6cf389A9A86Bd98a0dF910",
+        "status": "success"
+      },
+      {
+        "nonce": 3,
+        "hash": "0x93c5fe847678310d8c34bc3eee7e66592ce90538c694fa71e851344d7370472a",
+        "blockNumber": 44901312,
+        "contract": "ecosystemTreasury",
+        "contractAddress": "0x3Ca8dd7dF625d51aF1Da77716269D788DD869089",
+        "status": "success"
+      },
+      {
+        "nonce": 4,
+        "hash": "0x3ff011d5f8fb890c1fd85775dc17da5a36e5c2403738d88a95b44f0780e94f9f",
+        "blockNumber": 44901313,
+        "contract": "adoptionTreasury",
+        "contractAddress": "0x895C0C8749EF5DE94BA544cf28dDEd68fd6b3Aba",
+        "status": "success"
+      },
+      {
+        "nonce": 5,
+        "hash": "0x5c14c07d4f753372c69898f118eb828d18d09bc517ec1f888f5e730018886b57",
+        "blockNumber": 44901314,
+        "contract": "liquidityReserve",
+        "contractAddress": "0xC7F135d85aAe58bd409F7263FadbD041d6031B92",
+        "status": "success"
+      },
+      {
+        "nonce": 6,
+        "hash": "0xd3e1024bde5ceff9146e2c860e72aecda1755f34072d5a7731cc4f4dd0516cbd",
+        "blockNumber": 44901315,
+        "contract": "securityReserve",
+        "contractAddress": "0x594ce0619d5bAcA2F66992c89610cb57A704d0AB",
+        "status": "success"
+      },
+      {
+        "nonce": 7,
+        "hash": "0xc75d8a23420322299a0b73fb5a1d8f715d540ac9662225be88f37dad6b24921a",
+        "blockNumber": 44901316,
+        "contract": "contribution",
+        "contractAddress": "0xcb33eA69dDa48f2A345Fc1F2A3B85f329a5eb1E0",
+        "status": "success"
+      },
+      {
+        "nonce": 8,
+        "hash": "0x0e53e79f879ca42ec117f908d5ecf29940b3af5d40b90dc2591ed0f616e8b87c",
+        "blockNumber": 44901317,
+        "contract": "genesis",
+        "contractAddress": "0x2a00707664d738d41EDc4e453F173D38f6D83ECb",
+        "status": "success"
+      },
+      {
+        "nonce": 9,
+        "hash": "0xe66139a95a0c6c2c07e384857cf112302a640971f6ed1989a900375e9735a33d",
+        "blockNumber": 44901318,
+        "contract": "seasonAllocation",
+        "contractAddress": "0x0bFd6CEab5dB51d7B53789484ECD147B10D7fC65",
+        "status": "success"
+      }
+    ],
+    "blockFrom": 44901311,
+    "blockTo": 44901318,
+    "timestampFrom": "2026-08-01T07:55:10.000000Z",
+    "timestampTo": "2026-08-01T07:55:24.000000Z",
+    "operatorNonceBefore": 2,
+    "operatorNonceAfter": 10,
+    "codeSizes": {
+      "communityTreasury": 1187,
+      "ecosystemTreasury": 1187,
+      "adoptionTreasury": 1187,
+      "liquidityReserve": 1187,
+      "securityReserve": 1187,
+      "contribution": 14542,
+      "genesis": 210,
+      "seasonAllocation": 7072,
+      "token": 1755,
+      "teamVesting": 1475
+    },
+    "bytecodeChecks": "pass",
+    "evidenceRecoveredAfterRpcPropagationLag": true,
+    "sourceVerification": "pending"
+  },
+  "initialState": {
+    "seasonZeroRevision": 0,
+    "totalCommunityCommitted": "0",
+    "allocationTokenBalance": "0",
+    "allocationAllowance": "0",
+    "claimActive": false,
+    "saleActive": false,
+    "liquidityPoolActive": false
+  },
+  "boundaries": {
+    "testnetOnly": true,
+    "publicClaimAuthorized": false,
+    "saleAuthorized": false,
+    "liquidityAuthorized": false,
+    "mainnetAuthorized": false,
+    "formalAuditComplete": false,
+    "legalLaunchClearance": false
+  },
+  "evidenceGeneratedAt": "2026-08-01T08:11:42.464258+00:00"
+}
