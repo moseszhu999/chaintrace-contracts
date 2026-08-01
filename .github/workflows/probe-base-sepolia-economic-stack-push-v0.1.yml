@@ -1,0 +1,121 @@
+name: Probe Base Sepolia Economic Stack Push v0.1
+
+on:
+  push:
+    branches:
+      - ops/base-sepolia-economic-stack-probe-trigger-v0.1
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: tradeproof-base-sepolia-economic-stack-push-probe-v0-1
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    if: github.actor == 'moseszhu999'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RPC_URL: https://sepolia.base.org
+      CHAIN_ID: "84532"
+      TRADE_PROOF_REGISTRY: 0xad1c714140ceb8ed7c5234d939a06926f5edaba2
+      EXPECTED_POST_REGISTRY_NONCE: "2"
+
+    steps:
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Read signing identity and public chain state only
+        id: probe
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set +x
+          set -euo pipefail
+          if [ -z "$RAW_PRIVATE_KEY" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          echo "::add-mask::$PRIVATE_KEY"
+          OPERATOR="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          ACTUAL_CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
+          BALANCE_WEI="$(cast balance "$OPERATOR" --wei --rpc-url "$RPC_URL")"
+          NONCE="$(cast nonce "$OPERATOR" --rpc-url "$RPC_URL")"
+          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$RPC_URL")"
+          test "$ACTUAL_CHAIN_ID" = "$CHAIN_ID"
+          test "$REGISTRY_CODE" != "0x"
+          REGISTRY_CODE_BYTES=$(( (${#REGISTRY_CODE} - 2) / 2 ))
+          if [ "$NONCE" -eq "$EXPECTED_POST_REGISTRY_NONCE" ]; then
+            NONCE_STATUS="baseline-clear"
+          elif [ "$NONCE" -gt "$EXPECTED_POST_REGISTRY_NONCE" ]; then
+            NONCE_STATUS="advanced-do-not-retrigger"
+          else
+            NONCE_STATUS="unexpected-below-baseline"
+          fi
+          {
+            echo "operator=$OPERATOR"
+            echo "chain_id=$ACTUAL_CHAIN_ID"
+            echo "balance_wei=$BALANCE_WEI"
+            echo "nonce=$NONCE"
+            echo "nonce_status=$NONCE_STATUS"
+            echo "registry_code_bytes=$REGISTRY_CODE_BYTES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record read-only probe on carrier PR
+        uses: actions/github-script@v7
+        env:
+          OPERATOR: ${{ steps.probe.outputs.operator }}
+          CHAIN_ID_VALUE: ${{ steps.probe.outputs.chain_id }}
+          BALANCE_WEI: ${{ steps.probe.outputs.balance_wei }}
+          NONCE_VALUE: ${{ steps.probe.outputs.nonce }}
+          NONCE_STATUS: ${{ steps.probe.outputs.nonce_status }}
+          REGISTRY_CODE_BYTES: ${{ steps.probe.outputs.registry_code_bytes }}
+        with:
+          script: |
+            const body = [
+              '## Base Sepolia economic-stack push probe',
+              '',
+              `- Run: \`${context.runId}\``,
+              `- Trigger SHA: \`${context.sha}\``,
+              `- Operator: \`${process.env.OPERATOR}\``,
+              `- Chain ID: \`${process.env.CHAIN_ID_VALUE}\``,
+              `- Balance: \`${process.env.BALANCE_WEI} wei\``,
+              `- Nonce: \`${process.env.NONCE_VALUE}\``,
+              `- Nonce status: **${process.env.NONCE_STATUS}**`,
+              `- Canonical Registry bytecode: \`${process.env.REGISTRY_CODE_BYTES} bytes\``,
+              '',
+              'This probe is read-only. It sent no transaction and changed no contract state.',
+              '',
+              process.env.NONCE_STATUS === 'baseline-clear'
+                ? 'The wallet remains at the expected post-Registry baseline.'
+                : 'Do not trigger deployment until the nonce is reconciled.'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13,
+              body
+            });
+
+      - name: Record bounded probe failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13,
+              body: `Base Sepolia push probe failed. The probe authorized no transaction. Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
