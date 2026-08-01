@@ -42,12 +42,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
           CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
           if [ "$CHAIN_ID" != "84532" ]; then
             echo "Expected Base Sepolia chain ID 84532, received $CHAIN_ID"
             exit 1
           fi
-          DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
+          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
           BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
           echo "Deployer: $DEPLOYER"
           echo "Balance (wei): $BALANCE_WEI"
@@ -62,14 +67,30 @@ jobs:
           forge test -vvv
 
       - name: Simulate deployment
+        shell: bash
         run: |
-          forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
-            --rpc-url "$BASE_SEPOLIA_RPC_URL"
-
-      - name: Broadcast deployment
-        run: |
+          set -euo pipefail
+          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
           forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
             --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --private-key "$PRIVATE_KEY"
+
+      - name: Broadcast deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --private-key "$PRIVATE_KEY" \
             --broadcast \
             --slow
 
@@ -77,13 +98,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
           BROADCAST_FILE="broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json"
           test -f "$BROADCAST_FILE"
 
           CONTRACT_ADDRESS="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].contractAddress' "$BROADCAST_FILE")"
           TX_HASH="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].hash' "$BROADCAST_FILE")"
           BLOCK_NUMBER="$(jq -r '[.receipts[]][0].blockNumber' "$BROADCAST_FILE")"
-          DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
+          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
           BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
 
           if [ -z "$CONTRACT_ADDRESS" ] || [ "$CONTRACT_ADDRESS" = "null" ]; then
