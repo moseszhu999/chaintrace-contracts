@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 env:
-  BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
-  ECONOMIC_STACK_SOURCE: 005839c62c1a67392b2f5cced25374f5b48fecc1
-  EXPECTED_OPERATOR: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
+  BASE_SEPOLIA_RPC_URL: "https://sepolia.base.org"
+  ECONOMIC_STACK_SOURCE: "005839c62c1a67392b2f5cced25374f5b48fecc1"
+  EXPECTED_OPERATOR: "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9"
   EXPECTED_NONCE: "2"
-  TRADE_PROOF_REGISTRY: 0xad1c714140ceb8ed7c5234d939a06926f5edaba2
+  TRADE_PROOF_REGISTRY: "0xad1c714140ceb8ed7c5234d939a06926f5edaba2"
 
 jobs:
   foundry:
@@ -214,7 +214,7 @@ jobs:
       cancel-in-progress: false
     env:
       RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-      SOURCE_COMMIT: 005839c62c1a67392b2f5cced25374f5b48fecc1
+      SOURCE_COMMIT: "005839c62c1a67392b2f5cced25374f5b48fecc1"
       GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout deployment controls
