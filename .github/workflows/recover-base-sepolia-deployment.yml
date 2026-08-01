@@ -20,6 +20,7 @@ jobs:
     if: github.head_ref == 'deploy/base-sepolia-trade-proof-registry-v1'
     name: Verify bytecode and recover creation transaction
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out carrier
         uses: actions/checkout@v4
