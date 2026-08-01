@@ -1,0 +1,81 @@
+name: Contract validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundry:
+    name: Foundry build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout contracts
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Check canonical contract formatting
+        run: |
+          forge fmt --check \
+            contracts/TradeProofRegistry.sol \
+            test/TradeProofRegistry.t.sol \
+            script/DeployTradeProofRegistry.s.sol
+
+      - name: Build contracts
+        run: forge build --sizes
+
+      - name: Run tests
+        run: forge test -vvv
+
+  dlsk:
+    name: DLSK high-risk gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout contracts
+        uses: actions/checkout@v4
+
+      - name: Checkout DeFi Launch Safety Kit
+        uses: actions/checkout@v4
+        with:
+          repository: moseszhu999/defi-launch-safety-kit
+          path: dlsk
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install DLSK
+        run: python -m pip install -e ./dlsk
+
+      - name: Scan Solidity contracts
+        run: |
+          dlsk scan \
+            --source contracts \
+            --format all \
+            --out reports/dlsk \
+            --no-slither
+
+      - name: Block high or critical findings
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report_path = Path("reports/dlsk/report.json")
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          counts = report.get("counts", {})
+          high = int(counts.get("HIGH", 0))
+          critical = int(counts.get("CRITICAL", 0))
+          print(f"DLSK findings: HIGH={high}, CRITICAL={critical}")
+          if high or critical:
+              raise SystemExit("DLSK high-risk gate failed")
+          PY

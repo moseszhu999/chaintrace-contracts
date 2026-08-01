@@ -1,97 +1,164 @@
 # ChainTrace Contracts
 
-**Minimal smart contracts for the ChainTrace proof layer.**
+**Minimal smart contracts for the Trade Proof and ChainTrace proof layer.**
 
-This repository contains the first smart contract implementation for the ChainTrace Protocol.
+This repository is the canonical Solidity source of truth for Trade Proof contracts.
 
-The current goal is intentionally narrow:
+## Canonical v0.1 contract
 
-> Anchor proof hashes on-chain so that product, shipment, invoice, inspection, delivery, and acceptance evidence can be verified later.
+### TradeProofRegistry.sol
 
-## Repositories
+`TradeProofRegistry` anchors canonical digests of:
 
-- Protocol: https://github.com/moseszhu999/chaintrace-protocol
-- App: https://github.com/moseszhu999/chaintrace-app
-- Contracts: https://github.com/moseszhu999/chaintrace-contracts
+- Trade Proof Passports;
+- Trade Proof Responses.
 
-## Current Scope
+It records:
 
-The first contract set focuses on:
+- issuer wallet;
+- block timestamp;
+- artifact kind;
+- Passport subject for a Response;
+- schema hash;
+- digest profile hash;
+- supersession links;
+- revocation state and reason hash.
 
-- registering evidence hashes
-- associating proofs with proof types
-- recording submitter address and timestamp
-- emitting events for off-chain indexing
-- supporting simple batch and event extensions
+It does not store source documents or commercial plaintext.
 
-## Not Included Yet
+The initial digest profile is documented in:
 
-- token issuance
-- lending logic
-- stablecoin settlement
-- custody
-- financial returns
-- on-chain storage of full documents
+```text
+docs/trade-proof-registry-v0.1.md
+```
 
-ChainTrace stores proof references, not sensitive business documents.
+## Legacy proof primitives
 
-## Contracts
+The following contracts are retained as early ChainTrace proof primitives:
 
-### ProofRegistry.sol
+```text
+contracts/ProofRegistry.sol
+contracts/BatchRegistry.sol
+contracts/EventRegistry.sol
+```
 
-Registers a proof hash and metadata reference.
+They are not the canonical Trade Proof Passport registry and should not be extended into a competing Passport/version/revocation system.
 
-### BatchRegistry.sol
+- `ProofRegistry` anchors individual evidence-file hashes and references.
+- `BatchRegistry` creates simple batch/order/shipment keys.
+- `EventRegistry` records simple supply-chain event references.
 
-Creates flexible batch/order/shipment identifiers.
+Future compatibility work may map these legacy objects into Trade Proof Passport evidence and fact profiles.
 
-### EventRegistry.sol
+## Contract architecture
 
-Links supply chain events to a batch and a proof.
+```text
+Trade Proof Passport / Response JSON
+        ↓ canonicalization profile
+Keccak-256 artifact digest
+        ↓
+TradeProofRegistry
+        ↓
+issuer + timestamp + schema/profile + lifecycle links
+```
 
-## Local Development
+Evidence documents remain off-chain. Evidence-level SHA-256 hashes inside a Passport are distinct from the canonical Passport or Response digest anchored by `TradeProofRegistry`.
 
-This repository currently uses Foundry for lightweight Solidity development.
+## Current scope
 
-Install Foundry first, then run:
+Implemented:
+
+- Passport digest anchoring;
+- Response digest anchoring against a current Passport;
+- same-issuer version supersession;
+- Response subject continuity;
+- issuer-controlled revocation;
+- current/history queries;
+- Foundry tests;
+- Base Sepolia deployment script;
+- Foundry and DLSK CI gates.
+
+Not implemented yet:
+
+- `TradeProofContribution.sol`;
+- `TradeProofToken.sol`;
+- token issuance or distribution;
+- contribution rewards;
+- payment or settlement;
+- lending or disbursement;
+- custody;
+- asset tokenization;
+- production identity or organizational-authority verification.
+
+## Local development
+
+Install Foundry and run:
 
 ```bash
+forge fmt --check
 forge build
+forge test -vvv
 ```
 
-Format contracts:
+## Base Sepolia deployment
+
+Set environment variables locally without committing a private key:
 
 ```bash
-forge fmt
+export BASE_SEPOLIA_RPC_URL="..."
+export DEPLOYER_PRIVATE_KEY="..."
 ```
 
-Development notes:
+Simulate first:
+
+```bash
+forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+  --rpc-url base_sepolia
+```
+
+Broadcast only after review:
+
+```bash
+forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+  --rpc-url base_sepolia \
+  --broadcast
+```
+
+After deployment, replace the template values in a reviewed deployment manifest derived from:
 
 ```text
-docs/local-development.md
-docs/contract-design.md
+deployments/base-sepolia.example.json
 ```
 
-## First Integration Target
+No deployment is represented as complete until the address, transaction, block, source commit, and explorer-verification state are recorded.
+
+## Security gate
+
+Pull requests run:
 
 ```text
-chaintrace-app
-        ↓
-calculate SHA-256 file hash
-        ↓
-call ProofRegistry.registerProof
-        ↓
-return proofId and transaction hash
-        ↓
-show transaction hash on Proof Page
+forge fmt --check
+forge build --sizes
+forge test -vvv
+DLSK scan with fail-on-high
 ```
 
-## Design Principle
+DLSK is a pre-audit readiness gate, not a formal security audit.
 
-Proof, not exposure.  
-Hashes, not sensitive files.  
-Open facts, not platform control.
+## Design principles
+
+```text
+Proof, not exposure.
+Hashes, not sensitive files.
+Portable objects, not platform lock-in.
+Evidence integrity, not automatic truth.
+Community incentives, not control of evidence validity.
+```
+
+## License
+
+MIT.
 
 ## Disclaimer
 
-These contracts are experimental and unaudited. They are not financial products, investment contracts, lending systems, or token sale infrastructure.
+These contracts are experimental and unaudited. They do not constitute a financial product, investment contract, token sale, lending system, payment system, legal attestation, or promise of future returns.

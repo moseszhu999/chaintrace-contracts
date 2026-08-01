@@ -1,0 +1,14 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "contract": "TradeProofRegistry",
+  "address": null,
+  "deployer": null,
+  "deploymentTransaction": null,
+  "deploymentBlock": null,
+  "sourceCommit": null,
+  "solcVersion": "0.8.24",
+  "digestProfile": "trade-proof-passport-jcs-keccak256-v0.1",
+  "verifiedOnExplorer": false,
+  "status": "template-not-deployed"
+}
