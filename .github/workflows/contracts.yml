@@ -11,10 +11,6 @@ permissions:
 
 env:
   BASE_SEPOLIA_RPC_URL: "https://sepolia.base.org"
-  ECONOMIC_STACK_SOURCE: "005839c62c1a67392b2f5cced25374f5b48fecc1"
-  EXPECTED_OPERATOR: "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9"
-  EXPECTED_NONCE: "2"
-  TRADE_PROOF_REGISTRY: "0xad1c714140ceb8ed7c5234d939a06926f5edaba2"
 
 jobs:
   foundry:
@@ -46,8 +42,10 @@ jobs:
           print("PASS: bounded Base Sepolia manifest template")
           PY
 
-      - name: Compile deployment evidence finalizer
-        run: python -m py_compile tools/finalize-base-sepolia-economic-stack-v0.1.py
+      - name: Compile evidence tools
+        run: |
+          python -m py_compile tools/finalize-base-sepolia-economic-stack-v0.1.py
+          python -m py_compile tools/recover-base-sepolia-economic-stack-v0.1.py
 
       - name: Check canonical formatting
         run: |
@@ -121,227 +119,34 @@ jobs:
               raise SystemExit("DLSK high-risk gate failed")
           PY
 
-  probe_economic_stack_state:
-    name: Read-only Base Sepolia economic-stack state probe
+  recover_economic_stack_evidence:
+    name: Read-only Base Sepolia economic-stack evidence recovery
     if: >-
       github.event_name == 'pull_request' &&
       github.head_ref == 'ops/base-sepolia-economic-stack-carrier-v0.1'
     needs: [foundry, dlsk]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    env:
-      RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-      GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
-    steps:
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
-
-      - name: Read public chain state without signing or broadcasting
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${RAW_PRIVATE_KEY:-}"
-          PRIVATE_KEY="$RAW_PRIVATE_KEY"
-          case "$PRIVATE_KEY" in 0x*) ;; *) PRIVATE_KEY="0x$PRIVATE_KEY" ;; esac
-          echo "::add-mask::$PRIVATE_KEY"
-
-          OPERATOR="$(cast wallet address --private-key "$PRIVATE_KEY")"
-          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          BALANCE_WEI="$(cast balance "$OPERATOR" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          NONCE="$(cast nonce "$OPERATOR" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-
-          test "$CHAIN_ID" = "84532"
-          test "${OPERATOR,,}" = "${EXPECTED_OPERATOR,,}"
-          test "$REGISTRY_CODE" != "0x"
-
-          if [ "$NONCE" = "$EXPECTED_NONCE" ]; then
-            NONCE_STATUS="baseline-clear"
-          elif [ "$NONCE" -gt "$EXPECTED_NONCE" ]; then
-            NONCE_STATUS="advanced-do-not-retrigger"
-          else
-            NONCE_STATUS="unexpected-below-baseline"
-          fi
-
-          echo "PROBE_OPERATOR=$OPERATOR" >> "$GITHUB_ENV"
-          echo "PROBE_CHAIN_ID=$CHAIN_ID" >> "$GITHUB_ENV"
-          echo "PROBE_BALANCE_WEI=$BALANCE_WEI" >> "$GITHUB_ENV"
-          echo "PROBE_NONCE=$NONCE" >> "$GITHUB_ENV"
-          echo "PROBE_NONCE_STATUS=$NONCE_STATUS" >> "$GITHUB_ENV"
-          echo "PROBE_REGISTRY_CODE_BYTES=$(( (${#REGISTRY_CODE} - 2) / 2 ))" >> "$GITHUB_ENV"
-
-      - name: Publish read-only result
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          cat > /tmp/probe.md <<EOF
-          ## Base Sepolia economic-stack read-only probe
-
-          - Run: \`$GITHUB_RUN_ID\`
-          - Operator: \`$PROBE_OPERATOR\`
-          - Chain ID: \`$PROBE_CHAIN_ID\`
-          - Balance: \`$PROBE_BALANCE_WEI wei\`
-          - Nonce: \`$PROBE_NONCE\`
-          - Nonce status: **$PROBE_NONCE_STATUS**
-          - Registry bytecode: \`$PROBE_REGISTRY_CODE_BYTES bytes\`
-
-          This probe signed and sent no transaction.
-          EOF
-          gh pr comment "$GITHUB_EVENT_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/probe.md
-          test "$PROBE_NONCE_STATUS" = "baseline-clear"
-
-  deploy_economic_stack:
-    name: One-shot Base Sepolia economic-stack deployment
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'ops/base-sepolia-economic-stack-carrier-v0.1'
-    needs: [foundry, dlsk, probe_economic_stack_state]
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     permissions:
       contents: read
       issues: write
       pull-requests: write
     concurrency:
-      group: tradeproof-base-sepolia-economic-stack-v0-1
+      group: tradeproof-base-sepolia-economic-stack-evidence-v0-1
       cancel-in-progress: false
     env:
-      RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
-      SOURCE_COMMIT: "005839c62c1a67392b2f5cced25374f5b48fecc1"
       GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number }}
     steps:
-      - name: Checkout deployment controls
+      - name: Checkout recovery controls
         uses: actions/checkout@v4
-        with:
-          path: control
-
-      - name: Checkout exact reviewed economic-stack source
-        uses: actions/checkout@v4
-        with:
-          ref: 005839c62c1a67392b2f5cced25374f5b48fecc1
-          path: reviewed-source
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
 
-      - name: Revalidate exact reviewed source
-        working-directory: reviewed-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
-          forge fmt --check \
-            contracts/TradeProofRegistry.sol \
-            contracts/TradeProofContribution.sol \
-            contracts/TradeProofToken.sol \
-            contracts/TradeProofTeamVesting.sol \
-            contracts/TradeProofGenesis.sol \
-            contracts/TradeProofSeasonAllocation.sol \
-            contracts/TradeProofTestnetTreasuryVault.sol \
-            test/TradeProofRegistry.t.sol \
-            test/TradeProofContribution.t.sol \
-            test/TradeProofToken.t.sol \
-            test/TradeProofSeasonAllocation.t.sol \
-            test/TradeProofEconomicStack.t.sol \
-            script/DeployTradeProofRegistry.s.sol \
-            script/DeployTradeProofEconomicStack.s.sol
-          forge build --sizes --skip script
-          forge build script/DeployTradeProofEconomicStack.s.sol
-          forge test -vvv
-          python -m py_compile ../control/tools/finalize-base-sepolia-economic-stack-v0.1.py
-
-      - name: Enforce exact chain, operator, nonce, Registry and balance
-        working-directory: reviewed-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${RAW_PRIVATE_KEY:-}"
-          PRIVATE_KEY="$RAW_PRIVATE_KEY"
-          case "$PRIVATE_KEY" in 0x*) ;; *) PRIVATE_KEY="0x$PRIVATE_KEY" ;; esac
-          echo "::add-mask::$PRIVATE_KEY"
-
-          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
-          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          NONCE="$(cast nonce "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
-
-          test "$CHAIN_ID" = "84532"
-          test "${DEPLOYER,,}" = "${EXPECTED_OPERATOR,,}"
-          test "$NONCE" = "$EXPECTED_NONCE"
-          test "$REGISTRY_CODE" != "0x"
-          test "$BALANCE_WEI" -gt 0
-
-          echo "DEPLOYER_PRIVATE_KEY=$PRIVATE_KEY" >> "$GITHUB_ENV"
-          echo "DEPLOYER_ADDRESS=$DEPLOYER" >> "$GITHUB_ENV"
-          echo "DEPLOYER_NONCE_BEFORE=$NONCE" >> "$GITHUB_ENV"
-          echo "DEPLOYER_BALANCE_BEFORE=$BALANCE_WEI" >> "$GITHUB_ENV"
-          echo "TESTNET_OPERATOR=$DEPLOYER" >> "$GITHUB_ENV"
-
-      - name: Record exact preflight before any broadcast
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          cat > /tmp/preflight.md <<EOF
-          ## Base Sepolia economic-stack deployment preflight: PASS
-
-          - Run: \`$GITHUB_RUN_ID\`
-          - Reviewed source: \`$SOURCE_COMMIT\`
-          - Operator: \`$DEPLOYER_ADDRESS\`
-          - Starting nonce: \`$DEPLOYER_NONCE_BEFORE\`
-          - Starting balance: \`$DEPLOYER_BALANCE_BEFORE wei\`
-
-          Simulation runs before the single guarded broadcast.
-          EOF
-          gh pr comment "$GITHUB_EVENT_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/preflight.md
-
-      - name: Simulate exact economic-stack deployment
-        working-directory: reviewed-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
-          forge script \
-            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
-            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
-            --private-key "$DEPLOYER_PRIVATE_KEY" \
-            -vvv
-
-      - name: Recheck nonce immediately before broadcast
-        shell: bash
-        run: test "$(cast nonce "$DEPLOYER_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")" = "$EXPECTED_NONCE"
-
-      - name: Broadcast exact economic-stack deployment once
-        working-directory: reviewed-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
-          forge script \
-            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
-            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
-            --private-key "$DEPLOYER_PRIVATE_KEY" \
-            --broadcast \
-            --slow \
-            -vvv
-
-      - name: Verify chain state and create canonical evidence
-        env:
-          BROADCAST_FILE: reviewed-source/broadcast/DeployTradeProofEconomicStack.s.sol/84532/run-latest.json
-        shell: bash
-        run: |
-          python control/tools/finalize-base-sepolia-economic-stack-v0.1.py
-          cp "$BROADCAST_FILE" deployment-output/foundry-broadcast.json
+      - name: Recover and verify canonical deployment evidence
+        run: python tools/recover-base-sepolia-economic-stack-v0.1.py
 
       - name: Upload canonical deployment evidence
         uses: actions/upload-artifact@v4
@@ -349,26 +154,30 @@ jobs:
           name: tradeproof-base-sepolia-economic-stack-v0.1
           path: deployment-output/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
       - name: Publish canonical deployment result
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment "$GITHUB_EVENT_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file deployment-output/pr-comment.md
+        run: |
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file deployment-output/pr-comment.md
 
-      - name: Record bounded deployment failure
+      - name: Record bounded recovery failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          cat > /tmp/failure.md <<EOF
-          Base Sepolia economic-stack deployment did not complete.
+          cat > /tmp/recovery-failure.md <<EOF
+          Base Sepolia economic-stack read-only evidence recovery did not complete.
 
           - Run: \`$GITHUB_RUN_ID\`
-          - Reviewed source: \`$SOURCE_COMMIT\`
-          - Expected starting nonce: \`2\`
+          - Expected operator nonce: \`10\`
+          - Transaction authority: \`none\`
 
-          No retry is authorized until this run and the operator nonce are inspected.
+          This job had no private key and could not sign or send a transaction.
           EOF
-          gh pr comment "$GITHUB_EVENT_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/failure.md
+          gh pr comment "$GITHUB_EVENT_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file /tmp/recovery-failure.md
