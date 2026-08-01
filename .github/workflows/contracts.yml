@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   foundry:
@@ -16,11 +16,50 @@ jobs:
     steps:
       - name: Checkout contracts
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
+
+      - name: Integrate docs and apply canonical economic-stack formatting
+        if: github.event_name == 'pull_request' && github.head_ref == 'deploy/base-sepolia-economic-stack-v0.1'
+        run: |
+          python tools/apply-economic-stack-readme.py
+          forge fmt \
+            contracts/TradeProofTestnetTreasuryVault.sol \
+            script/DeployTradeProofEconomicStack.s.sol \
+            test/TradeProofEconomicStack.t.sol
+          git add \
+            README.md \
+            contracts/TradeProofTestnetTreasuryVault.sol \
+            script/DeployTradeProofEconomicStack.s.sol \
+            test/TradeProofEconomicStack.t.sol
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "style: finalize Base Sepolia economic-stack source"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
+
+      - name: Parse deployment manifest template
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("deployments/base-sepolia-economic-stack.template.json").read_text())
+          assert data["chainId"] == 84532
+          assert data["status"] == "template-not-deployed"
+          assert data["token"]["maxSupplyTokens"] == "1000000000"
+          assert data["token"]["publicSaleActive"] is False
+          assert data["token"]["claimActive"] is False
+          assert data["token"]["liquidityPoolActive"] is False
+          assert data["boundaries"]["testnetOnly"] is True
+          assert data["boundaries"]["mainnetAuthorized"] is False
+          print("PASS: bounded Base Sepolia manifest template")
+          PY
 
       - name: Check canonical contract formatting
         run: |
@@ -31,11 +70,14 @@ jobs:
             contracts/TradeProofTeamVesting.sol \
             contracts/TradeProofGenesis.sol \
             contracts/TradeProofSeasonAllocation.sol \
+            contracts/TradeProofTestnetTreasuryVault.sol \
             test/TradeProofRegistry.t.sol \
             test/TradeProofContribution.t.sol \
             test/TradeProofToken.t.sol \
             test/TradeProofSeasonAllocation.t.sol \
-            script/DeployTradeProofRegistry.s.sol
+            test/TradeProofEconomicStack.t.sol \
+            script/DeployTradeProofRegistry.s.sol \
+            script/DeployTradeProofEconomicStack.s.sol
 
       - name: Build contracts
         run: forge build --sizes
