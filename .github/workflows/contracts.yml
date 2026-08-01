@@ -27,8 +27,12 @@ jobs:
           forge fmt --check \
             contracts/TradeProofRegistry.sol \
             contracts/TradeProofContribution.sol \
+            contracts/TradeProofToken.sol \
+            contracts/TradeProofTeamVesting.sol \
+            contracts/TradeProofGenesis.sol \
             test/TradeProofRegistry.t.sol \
             test/TradeProofContribution.t.sol \
+            test/TradeProofToken.t.sol \
             script/DeployTradeProofRegistry.s.sol
 
       - name: Build contracts
