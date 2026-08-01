@@ -287,45 +287,24 @@ contract TradeProofContribution {
         bytes32 responseDigestB,
         bytes32 responseDigestC
     ) external returns (bytes32 receiptId) {
-        TradeProofRegistry.Anchor memory passport = _currentPassport(passportDigest);
-        TradeProofRegistry.Anchor memory responseA =
-            _responseForPassport(responseDigestA, passportDigest);
-        TradeProofRegistry.Anchor memory responseB =
-            _responseForPassport(responseDigestB, passportDigest);
-        TradeProofRegistry.Anchor memory responseC =
-            _responseForPassport(responseDigestC, passportDigest);
-
-        if (responseA.issuer == passport.issuer) revert SelfResponseNotEligible(responseDigestA);
-        if (responseB.issuer == passport.issuer) revert SelfResponseNotEligible(responseDigestB);
-        if (responseC.issuer == passport.issuer) revert SelfResponseNotEligible(responseDigestC);
-        if (responseA.issuer == responseB.issuer) revert DuplicateParticipant(responseA.issuer);
-        if (responseA.issuer == responseC.issuer) revert DuplicateParticipant(responseA.issuer);
-        if (responseB.issuer == responseC.issuer) revert DuplicateParticipant(responseB.issuer);
-
-        bytes32 roleA = responseRoleHash[responseDigestA];
-        bytes32 roleB = responseRoleHash[responseDigestB];
-        bytes32 roleC = responseRoleHash[responseDigestC];
-        if (roleA == bytes32(0)) revert RoleNotDeclared(responseDigestA);
-        if (roleB == bytes32(0)) revert RoleNotDeclared(responseDigestB);
-        if (roleC == bytes32(0)) revert RoleNotDeclared(responseDigestC);
-        if (roleA == roleB) revert DuplicateRole(roleA);
-        if (roleA == roleC) revert DuplicateRole(roleA);
-        if (roleB == roleC) revert DuplicateRole(roleB);
-
+        address passportIssuer = _validateThirdDistinctResponderRoles(
+            passportDigest, responseDigestA, responseDigestB, responseDigestC
+        );
         (bytes32 first, bytes32 second, bytes32 third) =
             _sortThree(responseDigestA, responseDigestB, responseDigestC);
+        bytes32 responseSetDigest = keccak256(abi.encode(first, second, third));
         bytes32 eventKey = keccak256(
             abi.encode(
-                ContributionKind.ThirdDistinctResponderRole, passportDigest, first, second, third
+                ContributionKind.ThirdDistinctResponderRole, passportDigest, responseSetDigest
             )
         );
         receiptId = _recordAutomatic(
             eventKey,
-            passport.issuer,
+            passportIssuer,
             ContributionKind.ThirdDistinctResponderRole,
             30,
             passportDigest,
-            keccak256(abi.encode(first, second, third))
+            responseSetDigest
         );
     }
 
@@ -678,6 +657,39 @@ contract TradeProofContribution {
             secondaryDigest,
             eligibleAt
         );
+    }
+
+    function _validateThirdDistinctResponderRoles(
+        bytes32 passportDigest,
+        bytes32 responseDigestA,
+        bytes32 responseDigestB,
+        bytes32 responseDigestC
+    ) private view returns (address passportIssuer) {
+        passportIssuer = _currentPassport(passportDigest).issuer;
+        (address responderA, bytes32 roleA) =
+            _responderAndRole(responseDigestA, passportDigest, passportIssuer);
+        (address responderB, bytes32 roleB) =
+            _responderAndRole(responseDigestB, passportDigest, passportIssuer);
+        (address responderC, bytes32 roleC) =
+            _responderAndRole(responseDigestC, passportDigest, passportIssuer);
+
+        if (responderA == responderB) revert DuplicateParticipant(responderA);
+        if (responderA == responderC) revert DuplicateParticipant(responderA);
+        if (responderB == responderC) revert DuplicateParticipant(responderB);
+        if (roleA == roleB) revert DuplicateRole(roleA);
+        if (roleA == roleC) revert DuplicateRole(roleA);
+        if (roleB == roleC) revert DuplicateRole(roleB);
+    }
+
+    function _responderAndRole(
+        bytes32 responseDigest,
+        bytes32 passportDigest,
+        address passportIssuer
+    ) private view returns (address responder, bytes32 roleHash) {
+        responder = _responseForPassport(responseDigest, passportDigest).issuer;
+        if (responder == passportIssuer) revert SelfResponseNotEligible(responseDigest);
+        roleHash = responseRoleHash[responseDigest];
+        if (roleHash == bytes32(0)) revert RoleNotDeclared(responseDigest);
     }
 
     function _consumePairPoints(address first, address second, uint32 season, uint32 points)
