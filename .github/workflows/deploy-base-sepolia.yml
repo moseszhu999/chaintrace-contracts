@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 env:
   BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
@@ -136,7 +138,7 @@ jobs:
 
           latest = int(rpc("eth_blockNumber", []), 16)
           found = None
-          for number in range(latest, max(-1, latest - 2400), -1):
+          for number in range(latest, max(-1, latest - 900), -1):
               block = rpc("eth_getBlockByNumber", [hex(number), True])
               if not block:
                   continue
@@ -222,3 +224,36 @@ jobs:
             deployment-output/recovered-transaction.json
             broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json
           if-no-files-found: error
+
+      - name: Publish deployment result to carrier PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONTRACT_ADDRESS="$(jq -r '.address' deployment-output/base-sepolia.json)"
+          TX_HASH="$(jq -r '.transactionHash' deployment-output/base-sepolia.json)"
+          BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/base-sepolia.json)"
+          cat > deployment-output/pr-comment.md <<EOF
+          <!-- trade-proof-deployment-result -->
+          ## Base Sepolia deployment: PASS
+
+          - Contract: \`TradeProofRegistry\`
+          - Address: \`$CONTRACT_ADDRESS\`
+          - Transaction: \`$TX_HASH\`
+          - Block: \`$BLOCK_NUMBER\`
+          - Deployer: \`$DEPLOYER_ADDRESS\`
+          - Chain ID: \`84532\`
+          - Registry source commit: \`27248faeed7f3eb88428fa8ce7979223e088429f\`
+          - Bytecode check: **PASS**
+          - Source verification: pending
+
+          Explorer: https://sepolia.basescan.org/address/$CONTRACT_ADDRESS
+          EOF
+
+          COMMENT_ID="$(gh api repos/moseszhu999/chaintrace-contracts/issues/2/comments --paginate --jq '.[] | select(.body | contains("<!-- trade-proof-deployment-result -->")) | .id' | tail -n 1)"
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/moseszhu999/chaintrace-contracts/issues/comments/$COMMENT_ID" --raw-field body="$(cat deployment-output/pr-comment.md)"
+          else
+            gh pr comment 2 --repo moseszhu999/chaintrace-contracts --body-file deployment-output/pr-comment.md
+          fi
