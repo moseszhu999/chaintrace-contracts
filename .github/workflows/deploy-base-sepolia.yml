@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - deploy/base-sepolia-trade-proof-registry-v1
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -14,10 +11,10 @@ permissions:
 env:
   BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
   DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+  RECOVERY_CONTRACT_ADDRESS: 0x6eE7ec00035b17C8D1dE1D24458552441D8A93c7
 
 jobs:
   deploy:
-    if: github.head_ref == 'deploy/base-sepolia-trade-proof-registry-v1' || github.ref == 'refs/heads/deploy/base-sepolia-trade-proof-registry-v1'
     name: Broadcast reviewed registry deployment
     runs-on: ubuntu-latest
     steps:
@@ -60,6 +57,20 @@ jobs:
             echo "Deployment wallet has no Base Sepolia ETH."
             exit 1
           fi
+          echo "DEPLOYER_ADDRESS=$DEPLOYER" >> "$GITHUB_ENV"
+
+      - name: Detect an already accepted deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          BYTECODE="$(cast code "$RECOVERY_CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          if [ "$BYTECODE" != "0x" ]; then
+            echo "Recovered deployed bytecode at $RECOVERY_CONTRACT_ADDRESS"
+            echo "DEPLOYMENT_RECOVERED=true" >> "$GITHUB_ENV"
+          else
+            echo "No bytecode at recovery address; a fresh broadcast is required."
+            echo "DEPLOYMENT_RECOVERED=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Build and test exact source
         run: |
@@ -67,6 +78,7 @@ jobs:
           forge test -vvv
 
       - name: Simulate deployment
+        if: env.DEPLOYMENT_RECOVERED != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -80,6 +92,7 @@ jobs:
             --private-key "$PRIVATE_KEY"
 
       - name: Broadcast deployment
+        if: env.DEPLOYMENT_RECOVERED != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -98,30 +111,76 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PRIVATE_KEY="$DEPLOYER_PRIVATE_KEY"
-          case "$PRIVATE_KEY" in
-            0x*) ;;
-            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
-          esac
-          BROADCAST_FILE="broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json"
-          test -f "$BROADCAST_FILE"
+          mkdir -p deployment-output
 
-          CONTRACT_ADDRESS="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].contractAddress' "$BROADCAST_FILE")"
-          TX_HASH="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].hash' "$BROADCAST_FILE")"
-          BLOCK_NUMBER="$(jq -r '[.receipts[]][0].blockNumber' "$BROADCAST_FILE")"
-          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
-          BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          if [ "${DEPLOYMENT_RECOVERED:-false}" = "true" ]; then
+            CONTRACT_ADDRESS="$RECOVERY_CONTRACT_ADDRESS"
+            export CONTRACT_ADDRESS
+            python - <<'PY' > deployment-output/recovered-transaction.json
+          import json
+          import os
+          import urllib.request
+
+          rpc_url = os.environ["BASE_SEPOLIA_RPC_URL"]
+          deployer = os.environ["DEPLOYER_ADDRESS"].lower()
+          contract_address = os.environ["CONTRACT_ADDRESS"].lower()
+
+          def rpc(method, params):
+              payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+              request = urllib.request.Request(rpc_url, data=payload, headers={"content-type": "application/json"})
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.loads(response.read().decode())
+              if "error" in result:
+                  raise RuntimeError(result["error"])
+              return result["result"]
+
+          latest = int(rpc("eth_blockNumber", []), 16)
+          found = None
+          for number in range(latest, max(-1, latest - 2400), -1):
+              block = rpc("eth_getBlockByNumber", [hex(number), True])
+              if not block:
+                  continue
+              for transaction in block.get("transactions", []):
+                  if transaction.get("from", "").lower() != deployer:
+                      continue
+                  if transaction.get("to") is not None:
+                      continue
+                  receipt = rpc("eth_getTransactionReceipt", [transaction["hash"]])
+                  if receipt and receipt.get("contractAddress", "").lower() == contract_address:
+                      found = {
+                          "transactionHash": transaction["hash"],
+                          "blockNumber": str(int(receipt["blockNumber"], 16)),
+                      }
+                      break
+              if found:
+                  break
+
+          if not found:
+              raise RuntimeError("Unable to recover the contract creation transaction from recent Base Sepolia blocks")
+          print(json.dumps(found))
+          PY
+            TX_HASH="$(jq -r '.transactionHash' deployment-output/recovered-transaction.json)"
+            BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/recovered-transaction.json)"
+          else
+            BROADCAST_FILE="broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json"
+            test -f "$BROADCAST_FILE"
+            CONTRACT_ADDRESS="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].contractAddress' "$BROADCAST_FILE")"
+            TX_HASH="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].hash' "$BROADCAST_FILE")"
+            BLOCK_NUMBER_HEX="$(jq -r '[.receipts[]][0].blockNumber' "$BROADCAST_FILE")"
+            BLOCK_NUMBER="$((BLOCK_NUMBER_HEX))"
+          fi
 
           if [ -z "$CONTRACT_ADDRESS" ] || [ "$CONTRACT_ADDRESS" = "null" ]; then
-            echo "Contract address was not found in broadcast output."
+            echo "Contract address was not found."
             exit 1
           fi
+
+          BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
           if [ "$BYTECODE" = "0x" ]; then
             echo "No deployed bytecode found at $CONTRACT_ADDRESS"
             exit 1
           fi
 
-          mkdir -p deployment-output
           jq -n \
             --arg network "base-sepolia" \
             --argjson chainId 84532 \
@@ -129,9 +188,10 @@ jobs:
             --arg address "$CONTRACT_ADDRESS" \
             --arg transactionHash "$TX_HASH" \
             --arg blockNumber "$BLOCK_NUMBER" \
-            --arg deployer "$DEPLOYER" \
-            --arg sourceCommit "$GITHUB_SHA" \
-            --arg explorerUrl "https://sepolia-explorer.base.org/address/$CONTRACT_ADDRESS" \
+            --arg deployer "$DEPLOYER_ADDRESS" \
+            --arg registrySourceCommit "27248faeed7f3eb88428fa8ce7979223e088429f" \
+            --arg deploymentCarrierCommit "$GITHUB_SHA" \
+            --arg explorerUrl "https://sepolia.basescan.org/address/$CONTRACT_ADDRESS" \
             '{
               network: $network,
               chainId: $chainId,
@@ -140,15 +200,18 @@ jobs:
               transactionHash: $transactionHash,
               blockNumber: $blockNumber,
               deployer: $deployer,
-              sourceCommit: $sourceCommit,
+              registrySourceCommit: $registrySourceCommit,
+              deploymentCarrierCommit: $deploymentCarrierCommit,
               explorerUrl: $explorerUrl,
+              bytecodeVerified: true,
               sourceVerification: "not-yet-recorded"
             }' > deployment-output/base-sepolia.json
 
           cat deployment-output/base-sepolia.json
           echo "Contract: $CONTRACT_ADDRESS" >> "$GITHUB_STEP_SUMMARY"
           echo "Transaction: $TX_HASH" >> "$GITHUB_STEP_SUMMARY"
-          echo "Explorer: https://sepolia-explorer.base.org/address/$CONTRACT_ADDRESS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Block: $BLOCK_NUMBER" >> "$GITHUB_STEP_SUMMARY"
+          echo "Explorer: https://sepolia.basescan.org/address/$CONTRACT_ADDRESS" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload deployment evidence
         uses: actions/upload-artifact@v4
@@ -156,5 +219,6 @@ jobs:
           name: trade-proof-registry-base-sepolia
           path: |
             deployment-output/base-sepolia.json
+            deployment-output/recovered-transaction.json
             broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json
           if-no-files-found: error
