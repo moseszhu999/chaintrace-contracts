@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {TradeProofRegistry} from "../contracts/TradeProofRegistry.sol";
+import { TradeProofRegistry } from "../contracts/TradeProofRegistry.sol";
 
 interface Vm {
     function prank(address caller) external;
@@ -73,32 +73,17 @@ contract TradeProofRegistryTest {
 
     function testResponseRequiresCurrentPassport() public {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TradeProofRegistry.CurrentPassportRequired.selector,
-                PASSPORT_V1
-            )
+            abi.encodeWithSelector(TradeProofRegistry.CurrentPassportRequired.selector, PASSPORT_V1)
         );
         vm.prank(BOB);
-        registry.anchorResponse(
-            RESPONSE_V1,
-            PASSPORT_V1,
-            SCHEMA_HASH,
-            PROFILE_HASH,
-            bytes32(0)
-        );
+        registry.anchorResponse(RESPONSE_V1, PASSPORT_V1, SCHEMA_HASH, PROFILE_HASH, bytes32(0));
     }
 
     function testResponseLinksToPassportWithoutChangingPassportIssuer() public {
         _anchorPassport(ALICE, PASSPORT_V1, bytes32(0));
 
         vm.prank(BOB);
-        registry.anchorResponse(
-            RESPONSE_V1,
-            PASSPORT_V1,
-            SCHEMA_HASH,
-            PROFILE_HASH,
-            bytes32(0)
-        );
+        registry.anchorResponse(RESPONSE_V1, PASSPORT_V1, SCHEMA_HASH, PROFILE_HASH, bytes32(0));
 
         TradeProofRegistry.Anchor memory response = registry.getAnchor(RESPONSE_V1);
         _assertEq(response.issuer, BOB, "response issuer");
@@ -157,13 +142,7 @@ contract TradeProofRegistryTest {
         _anchorPassport(ALICE, PASSPORT_V1, bytes32(0));
 
         vm.prank(ALICE);
-        registry.anchorResponse(
-            RESPONSE_V1,
-            PASSPORT_V1,
-            SCHEMA_HASH,
-            PROFILE_HASH,
-            bytes32(0)
-        );
+        registry.anchorResponse(RESPONSE_V1, PASSPORT_V1, SCHEMA_HASH, PROFILE_HASH, bytes32(0));
 
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.KindMismatch.selector, RESPONSE_V1)
@@ -177,25 +156,13 @@ contract TradeProofRegistryTest {
         _anchorPassport(ALICE, OTHER_PASSPORT, bytes32(0));
 
         vm.prank(BOB);
-        registry.anchorResponse(
-            RESPONSE_V1,
-            PASSPORT_V1,
-            SCHEMA_HASH,
-            PROFILE_HASH,
-            bytes32(0)
-        );
+        registry.anchorResponse(RESPONSE_V1, PASSPORT_V1, SCHEMA_HASH, PROFILE_HASH, bytes32(0));
 
         vm.expectRevert(
             abi.encodeWithSelector(TradeProofRegistry.SubjectMismatch.selector, RESPONSE_V1)
         );
         vm.prank(BOB);
-        registry.anchorResponse(
-            RESPONSE_V2,
-            OTHER_PASSPORT,
-            SCHEMA_HASH,
-            PROFILE_HASH,
-            RESPONSE_V1
-        );
+        registry.anchorResponse(RESPONSE_V2, OTHER_PASSPORT, SCHEMA_HASH, PROFILE_HASH, RESPONSE_V1);
     }
 
     function _anchorPassport(address issuer, bytes32 digest, bytes32 supersedesDigest) private {
