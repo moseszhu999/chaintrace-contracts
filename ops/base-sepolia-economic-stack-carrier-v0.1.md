@@ -55,10 +55,27 @@ The workflow must use the existing `DEPLOYER_PRIVATE_KEY` repository secret with
 ```text
 integratedProbeMain: 0b6e1c0ba7143d02cc47ab8c7daf6561ff4b2a53
 probeTrigger: 2026-08-01-v1
+probeRun: 30688305004
+operatorNonce: 2
+nonceStatus: baseline-clear
 transactionAuthorized: false
 ```
 
-This synchronization only triggers Foundry, DLSK and a public Base Sepolia balance/nonce/Registry-code read. It signs and broadcasts no transaction.
+## Guarded deployment synchronization
+
+```text
+deploymentWorkflowMain: addcbf15325b5053a874d08be12814d1d8ae7c42
+deploymentTrigger: 2026-08-01-v1
+expectedStartingNonce: 2
+expectedEndingNonce: 10
+testnetOnly: true
+claimAuthorized: false
+saleAuthorized: false
+liquidityAuthorized: false
+mainnetAuthorized: false
+```
+
+This commit triggers the exact carrier-branch job in the existing Contract validation workflow. Foundry, DLSK and the nonce probe must pass before simulation and the single broadcast.
 
 After successful evidence preservation:
 
