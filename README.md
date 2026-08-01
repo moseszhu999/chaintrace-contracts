@@ -4,7 +4,7 @@
 
 This repository is the canonical Solidity source of truth for Trade Proof contracts.
 
-## Canonical v0.1 contract
+## Canonical v0.1 contracts
 
 ### TradeProofRegistry.sol
 
@@ -13,26 +13,66 @@ This repository is the canonical Solidity source of truth for Trade Proof contra
 - Trade Proof Passports;
 - Trade Proof Responses.
 
-It records:
+It records issuer, block time, artifact kind, Response subject, schema/profile hashes, supersession links, and revocation state. It does not store source documents or commercial plaintext.
 
-- issuer wallet;
-- block timestamp;
-- artifact kind;
-- Passport subject for a Response;
-- schema hash;
-- digest profile hash;
-- supersession links;
-- revocation state and reason hash.
-
-It does not store source documents or commercial plaintext.
-
-The initial digest profile is documented in:
+The digest profile is documented in:
 
 ```text
 docs/trade-proof-registry-v0.1.md
 ```
 
-## Canonical Base Sepolia deployment
+### TradeProofContribution.sol
+
+`TradeProofContribution` records non-transferable contribution receipts and seasonal Proof Points derived from current Registry anchors and governed public-goods review.
+
+Implemented automatic contribution classes:
+
+```text
+unique Passport                          +5 issuer
+independent external Response            +10 Passport issuer / +20 responder
+third distinct responder role            +30 Passport issuer
+viral reuse within 30 days               +50 inviter / +25 new creator
+repeat use across two lineages           +20 participant
+```
+
+Implemented reviewed public-goods classes:
+
+```text
+accepted standard change                    500–3,000
+production connector or Agent integration 1,500–10,000
+security finding or fix                     500–15,000
+verified repeat adoption case             1,000–10,000
+documentation, translation, or education    100–2,000
+```
+
+Economic controls:
+
+```text
+season length                              90 days
+receipt review delay                       30 days
+appeal window                              14 days
+viral reuse window                         30 days
+minimum eligibility                        25 points
+automatic wallet/day cap                  200 points
+automatic wallet-pair/season cap          300 points
+```
+
+Receipts and Proof Points are not ERC-20 or ERC-721 assets and have no transfer function. The contract does not mint, distribute, sell, price, or move TPROOF.
+
+The bounded implementation contract is documented in:
+
+```text
+docs/trade-proof-contribution-v0.1.md
+```
+
+The canonical economic constitution remains in:
+
+```text
+https://github.com/moseszhu999/trade-proof-passport/blob/main/standard/tproof-token-economics-v0.1.md
+https://github.com/moseszhu999/trade-proof-passport/blob/main/tokenomics/tproof-tokenomics-v0.1.json
+```
+
+## Canonical Base Sepolia Registry deployment
 
 ```text
 Network: Base Sepolia
@@ -48,13 +88,33 @@ Bytecode check: PASS
 Explorer source verification: pending
 ```
 
-The machine-readable deployment record is:
+The machine-readable Registry deployment record is:
 
 ```text
 deployments/base-sepolia.json
 ```
 
-This is a testnet deployment. It does not represent a production launch, mainnet deployment, formal audit, verified organizational identity, or proof that an off-chain trade fact is true.
+`TradeProofContribution` is not yet deployed. A future testnet deployment requires this implementation PR, test and security gates, exact-source evidence, and a separate deployment review.
+
+## Contract architecture
+
+```text
+Trade Proof Passport / Response JSON
+        ↓ canonicalization profile
+Keccak-256 artifact digest
+        ↓
+TradeProofRegistry
+        ↓ current onchain artifact facts
+TradeProofContribution
+        ↓ delayed non-transferable receipts
+Seasonal verified Proof Points
+        ↓ future and not implemented here
+TPROOF allocation / Token contracts
+```
+
+Evidence documents remain off-chain. Evidence-level SHA-256 hashes inside a Passport are distinct from the canonical Passport or Response digest anchored by `TradeProofRegistry`.
+
+Token holdings, staking, receipts, or Proof Points cannot make a Passport, Response, evidence record, or real-world assertion valid.
 
 ## Legacy proof primitives
 
@@ -66,55 +126,34 @@ contracts/BatchRegistry.sol
 contracts/EventRegistry.sol
 ```
 
-They are not the canonical Trade Proof Passport registry and should not be extended into a competing Passport/version/revocation system.
-
-- `ProofRegistry` anchors individual evidence-file hashes and references.
-- `BatchRegistry` creates simple batch/order/shipment keys.
-- `EventRegistry` records simple supply-chain event references.
-
-Future compatibility work may map these legacy objects into Trade Proof Passport evidence and fact profiles.
-
-## Contract architecture
-
-```text
-Trade Proof Passport / Response JSON
-        ↓ canonicalization profile
-Keccak-256 artifact digest
-        ↓
-TradeProofRegistry
-        ↓
-issuer + timestamp + schema/profile + lifecycle links
-```
-
-Evidence documents remain off-chain. Evidence-level SHA-256 hashes inside a Passport are distinct from the canonical Passport or Response digest anchored by `TradeProofRegistry`.
+They are not canonical Trade Proof Passport or contribution contracts and should not be extended into competing Passport, lifecycle, receipt, or points systems.
 
 ## Current scope
 
 Implemented:
 
-- Passport digest anchoring;
-- Response digest anchoring against a current Passport;
+- Passport and Response digest anchoring;
 - same-issuer version supersession;
 - Response subject continuity;
 - issuer-controlled revocation;
 - current/history queries;
+- bounded contribution receipts and Proof Points;
+- independent-response, role, viral-reuse, and repeat-use rules;
+- reviewed public-goods submissions;
+- review delay, exclusion, appeal, revocation, caps, and season closure;
 - Foundry tests;
-- canonical Base Sepolia deployment;
-- machine-readable deployment manifest;
+- canonical Registry Base Sepolia deployment;
 - Foundry and DLSK CI gates.
 
-Not implemented yet:
+Not implemented:
 
-- `TradeProofContribution.sol`;
 - `TradeProofToken.sol`;
-- token issuance or distribution;
-- contribution rewards;
-- payment or settlement;
-- lending or disbursement;
-- custody;
-- asset tokenization;
-- production identity or organizational-authority verification;
-- explorer source verification;
+- Token issuance, claims, distribution, sale, or liquidity;
+- square-root seasonal Token allocation execution;
+- production multisig, timelock, identity, or organizational-authority verification;
+- payment, settlement, lending, disbursement, custody, or asset tokenization;
+- Contribution contract testnet deployment;
+- Registry explorer source verification;
 - formal external smart-contract audit.
 
 ## Local development
@@ -123,21 +162,9 @@ Install Foundry and run:
 
 ```bash
 forge fmt --check
-forge build
+forge build --sizes
 forge test -vvv
 ```
-
-## Reviewed deployment procedure
-
-A deployment must use a dedicated testnet-only wallet, simulate or build/test before broadcast, verify the transaction receipt and deployed bytecode, and record the exact address, transaction, block, deployer, source commit, compiler version, and explorer-verification state.
-
-The deployment manifest template remains available at:
-
-```text
-deployments/base-sepolia.example.json
-```
-
-Private keys must never be committed, printed, included in artifacts, or posted in issues, pull requests, chat, screenshots, or documentation.
 
 ## Security gate
 
@@ -159,6 +186,7 @@ Proof, not exposure.
 Hashes, not sensitive files.
 Portable objects, not platform lock-in.
 Evidence integrity, not automatic truth.
+Contribution before liquidity.
 Community incentives, not control of evidence validity.
 ```
 
