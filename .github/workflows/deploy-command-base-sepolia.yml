@@ -1,0 +1,189 @@
+name: Owner-commanded Base Sepolia deployment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: trade-proof-registry-base-sepolia-owner-command-v2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.issue.pull_request != null &&
+      github.event.issue.number == 7 &&
+      github.event.comment.user.login == 'moseszhu999' &&
+      github.event.comment.body == '/deploy-trade-proof-registry-base-sepolia-v2'
+    name: Deploy canonical TradeProofRegistry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+      RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      EXPECTED_DEPLOYER: "0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9"
+      DEPLOYMENT_BRANCH: deploy/base-sepolia-trade-proof-registry-canonical-v2
+    steps:
+      - name: Check out exact deployment carrier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOYMENT_BRANCH }}
+          fetch-depth: 0
+
+      - name: Prove contract source matches main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git diff --exit-code origin/main -- \
+            contracts/TradeProofRegistry.sol \
+            test/TradeProofRegistry.t.sol \
+            script/DeployTradeProofRegistry.s.sol \
+            foundry.toml
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Build and test reviewed source
+        run: |
+          forge build --sizes
+          forge test -vvv
+
+      - name: Enforce network, deployer, nonce, and balance
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW_PRIVATE_KEY:-}" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured."
+            exit 1
+          fi
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          DEPLOYER="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          NONCE="$(cast nonce "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+
+          test "$CHAIN_ID" = "84532"
+          test "${DEPLOYER,,}" = "${EXPECTED_DEPLOYER,,}"
+          if [ "$NONCE" != "1" ]; then
+            echo "Expected deployer nonce 1, received $NONCE. Refusing deployment."
+            exit 1
+          fi
+          if [ "$BALANCE_WEI" -lt 20000000000000 ]; then
+            echo "Insufficient Base Sepolia ETH: $BALANCE_WEI wei"
+            exit 1
+          fi
+
+          echo "DEPLOYER_PRIVATE_KEY=$PRIVATE_KEY" >> "$GITHUB_ENV"
+          echo "DEPLOYER_ADDRESS=$DEPLOYER" >> "$GITHUB_ENV"
+          echo "Preflight PASS: chain=$CHAIN_ID deployer=$DEPLOYER nonce=$NONCE balanceWei=$BALANCE_WEI"
+
+      - name: Broadcast exactly one deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --broadcast \
+            --slow
+
+      - name: Verify and record deployment evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment-output
+          BROADCAST_FILE="broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json"
+          test -f "$BROADCAST_FILE"
+
+          CONTRACT_ADDRESS="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].contractAddress' "$BROADCAST_FILE")"
+          TX_HASH="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].hash' "$BROADCAST_FILE")"
+          BLOCK_VALUE="$(jq -r '[.receipts[]][0].blockNumber' "$BROADCAST_FILE")"
+          STATUS="$(jq -r '[.receipts[]][0].status' "$BROADCAST_FILE")"
+
+          test -n "$CONTRACT_ADDRESS"
+          test "$CONTRACT_ADDRESS" != "null"
+          test -n "$TX_HASH"
+          test "$TX_HASH" != "null"
+          if [ "$STATUS" != "0x1" ] && [ "$STATUS" != "1" ]; then
+            echo "Deployment receipt failed with status $STATUS"
+            exit 1
+          fi
+
+          BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          test "$BYTECODE" != "0x"
+          export BLOCK_VALUE
+          BLOCK_NUMBER="$(python -c 'import os; v=os.environ["BLOCK_VALUE"]; print(int(v,16) if v.startswith("0x") else int(v))')"
+          BYTECODE_SIZE="$(( (${#BYTECODE} - 2) / 2 ))"
+
+          jq -n \
+            --arg address "$CONTRACT_ADDRESS" \
+            --arg transactionHash "$TX_HASH" \
+            --arg blockNumber "$BLOCK_NUMBER" \
+            --arg deployer "$DEPLOYER_ADDRESS" \
+            --arg deploymentCarrierCommit "$(git rev-parse HEAD)" \
+            --arg bytecodeSizeBytes "$BYTECODE_SIZE" \
+            '{
+              network:"base-sepolia",
+              chainId:84532,
+              contractName:"TradeProofRegistry",
+              address:$address,
+              transactionHash:$transactionHash,
+              blockNumber:$blockNumber,
+              deployer:$deployer,
+              registrySourceCommit:"27248faeed7f3eb88428fa8ce7979223e088429f",
+              deploymentCarrierCommit:$deploymentCarrierCommit,
+              bytecodeSizeBytes:($bytecodeSizeBytes|tonumber),
+              bytecodeVerified:true,
+              sourceVerification:"not-yet-recorded",
+              explorerUrl:("https://sepolia.basescan.org/address/"+$address),
+              canonical:true
+            }' > deployment-output/base-sepolia.json
+          cp "$BROADCAST_FILE" deployment-output/broadcast.json
+          cat deployment-output/base-sepolia.json
+          echo "CONTRACT_ADDRESS=$CONTRACT_ADDRESS" >> "$GITHUB_ENV"
+          echo "TX_HASH=$TX_HASH" >> "$GITHUB_ENV"
+
+      - name: Upload canonical deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-proof-registry-base-sepolia-canonical-v2
+          path: deployment-output/
+          if-no-files-found: error
+
+      - name: Publish exact result to PR 7
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BLOCK_NUMBER="$(jq -r '.blockNumber' deployment-output/base-sepolia.json)"
+          BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployment-output/base-sepolia.json)"
+          cat > deployment-output/pr-comment.md <<EOF
+          <!-- trade-proof-canonical-deployment-result -->
+          ## Canonical Base Sepolia deployment: PASS
+
+          - Contract: \`TradeProofRegistry\`
+          - Address: \`$CONTRACT_ADDRESS\`
+          - Transaction: \`$TX_HASH\`
+          - Block: \`$BLOCK_NUMBER\`
+          - Deployer: \`$DEPLOYER_ADDRESS\`
+          - Chain ID: \`84532\`
+          - Deployed bytecode: \`$BYTECODE_SIZE bytes\`
+          - Registry source: \`27248faeed7f3eb88428fa8ce7979223e088429f\`
+          - Bytecode check: **PASS**
+          - Source verification: pending
+
+          Explorer: https://sepolia.basescan.org/address/$CONTRACT_ADDRESS
+          EOF
+          gh pr comment 7 --repo moseszhu999/chaintrace-contracts --body-file deployment-output/pr-comment.md
