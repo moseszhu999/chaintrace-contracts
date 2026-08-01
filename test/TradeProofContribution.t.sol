@@ -190,8 +190,7 @@ contract TradeProofContributionTest {
         _anchorPassport(ALICE, PASSPORT_B);
         _anchorResponse(CAROL, RESPONSE_B, PASSPORT_B);
 
-        bytes32 receiptId =
-            contribution.recordRepeatTradeUsage(ALICE, RESPONSE_A, RESPONSE_B);
+        bytes32 receiptId = contribution.recordRepeatTradeUsage(ALICE, RESPONSE_A, RESPONSE_B);
         TradeProofContribution.Receipt memory receipt = contribution.getReceipt(receiptId);
         _assertEq(receipt.points, 20, "repeat points");
         _assertEq(receipt.beneficiary, ALICE, "repeat actor");
@@ -235,9 +234,7 @@ contract TradeProofContributionTest {
             1000
         );
 
-        vm.expectRevert(
-            abi.encodeWithSelector(TradeProofContribution.NotReviewer.selector, BOB)
-        );
+        vm.expectRevert(abi.encodeWithSelector(TradeProofContribution.NotReviewer.selector, BOB));
         vm.prank(BOB);
         contribution.reviewPublicGoodsContribution(receiptId, true, 1000, DECISION_HASH);
     }

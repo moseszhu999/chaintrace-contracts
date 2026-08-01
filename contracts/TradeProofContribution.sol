@@ -74,7 +74,8 @@ contract TradeProofContribution {
     mapping(bytes32 receiptId => Receipt receipt) private receipts;
     mapping(uint32 season => mapping(address beneficiary => uint256 points)) public verifiedPoints;
     mapping(uint32 season => uint256 points) public totalVerifiedPoints;
-    mapping(uint256 day => mapping(address beneficiary => uint32 points)) public dailyAutomaticPoints;
+    mapping(uint256 day => mapping(address beneficiary => uint32 points)) public
+        dailyAutomaticPoints;
     mapping(uint32 season => mapping(bytes32 pairKey => uint32 points)) public seasonalPairPoints;
     mapping(bytes32 responseDigest => bytes32 roleHash) public responseRoleHash;
     mapping(uint32 season => bool closed) public seasonClosed;
@@ -115,7 +116,9 @@ contract TradeProofContribution {
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event ReviewerSet(address indexed reviewer, bool allowed);
-    event ResponseRoleDeclared(bytes32 indexed responseDigest, address indexed responder, bytes32 roleHash);
+    event ResponseRoleDeclared(
+        bytes32 indexed responseDigest, address indexed responder, bytes32 roleHash
+    );
     event ReceiptRecorded(
         bytes32 indexed receiptId,
         address indexed beneficiary,
@@ -139,7 +142,9 @@ contract TradeProofContribution {
     );
     event ReceiptExcluded(bytes32 indexed receiptId, address indexed reviewer, bytes32 reasonHash);
     event ReceiptRevoked(bytes32 indexed receiptId, address indexed reviewer, bytes32 reasonHash);
-    event ReceiptAppealed(bytes32 indexed receiptId, address indexed beneficiary, bytes32 appealDigest);
+    event ReceiptAppealed(
+        bytes32 indexed receiptId, address indexed beneficiary, bytes32 appealDigest
+    );
     event AppealResolved(
         bytes32 indexed receiptId,
         address indexed reviewer,
@@ -214,7 +219,8 @@ contract TradeProofContribution {
         TradeProofRegistry.Anchor memory passport = _currentPassport(passportDigest);
         if (passport.issuer != msg.sender) revert NotArtifactIssuer(passportDigest, msg.sender);
 
-        bytes32 eventKey = keccak256(abi.encode(ContributionKind.AnchorUniquePassport, passportDigest));
+        bytes32 eventKey =
+            keccak256(abi.encode(ContributionKind.AnchorUniquePassport, passportDigest));
         receiptId = _recordAutomatic(
             eventKey,
             passport.issuer,
@@ -237,7 +243,11 @@ contract TradeProofContribution {
         uint32 season = currentSeason();
         _consumePairPoints(passport.issuer, response.issuer, season, 30);
         bytes32 eventKey = keccak256(
-            abi.encode(ContributionKind.IndependentResponseResponder, responseDigest, response.subjectDigest)
+            abi.encode(
+                ContributionKind.IndependentResponseResponder,
+                responseDigest,
+                response.subjectDigest
+            )
         );
 
         issuerReceiptId = _recordAutomatic(
@@ -263,7 +273,9 @@ contract TradeProofContribution {
         if (roleHash == bytes32(0)) revert ZeroRoleHash();
         TradeProofRegistry.Anchor memory response = _currentResponse(responseDigest);
         if (response.issuer != msg.sender) revert NotArtifactIssuer(responseDigest, msg.sender);
-        if (responseRoleHash[responseDigest] != bytes32(0)) revert RoleAlreadyDeclared(responseDigest);
+        if (responseRoleHash[responseDigest] != bytes32(0)) {
+            revert RoleAlreadyDeclared(responseDigest);
+        }
         responseRoleHash[responseDigest] = roleHash;
         emit ResponseRoleDeclared(responseDigest, msg.sender, roleHash);
     }
@@ -276,9 +288,12 @@ contract TradeProofContribution {
         bytes32 responseDigestC
     ) external returns (bytes32 receiptId) {
         TradeProofRegistry.Anchor memory passport = _currentPassport(passportDigest);
-        TradeProofRegistry.Anchor memory responseA = _responseForPassport(responseDigestA, passportDigest);
-        TradeProofRegistry.Anchor memory responseB = _responseForPassport(responseDigestB, passportDigest);
-        TradeProofRegistry.Anchor memory responseC = _responseForPassport(responseDigestC, passportDigest);
+        TradeProofRegistry.Anchor memory responseA =
+            _responseForPassport(responseDigestA, passportDigest);
+        TradeProofRegistry.Anchor memory responseB =
+            _responseForPassport(responseDigestB, passportDigest);
+        TradeProofRegistry.Anchor memory responseC =
+            _responseForPassport(responseDigestC, passportDigest);
 
         if (responseA.issuer == passport.issuer) revert SelfResponseNotEligible(responseDigestA);
         if (responseB.issuer == passport.issuer) revert SelfResponseNotEligible(responseDigestB);
@@ -300,7 +315,9 @@ contract TradeProofContribution {
         (bytes32 first, bytes32 second, bytes32 third) =
             _sortThree(responseDigestA, responseDigestB, responseDigestC);
         bytes32 eventKey = keccak256(
-            abi.encode(ContributionKind.ThirdDistinctResponderRole, passportDigest, first, second, third)
+            abi.encode(
+                ContributionKind.ThirdDistinctResponderRole, passportDigest, first, second, third
+            )
         );
         receiptId = _recordAutomatic(
             eventKey,
@@ -331,7 +348,9 @@ contract TradeProofContribution {
         ) {
             revert ViralReuseWindowMissed(responseDigest, newPassportDigest);
         }
-        if (sourcePassport.issuer == newPassport.issuer) revert SelfResponseNotEligible(responseDigest);
+        if (sourcePassport.issuer == newPassport.issuer) {
+            revert SelfResponseNotEligible(responseDigest);
+        }
 
         uint32 season = currentSeason();
         _consumePairPoints(sourcePassport.issuer, newPassport.issuer, season, 75);
@@ -366,10 +385,14 @@ contract TradeProofContribution {
         if (actor == address(0)) revert ZeroAddress();
         TradeProofRegistry.Anchor memory firstResponse = _currentResponse(firstResponseDigest);
         TradeProofRegistry.Anchor memory secondResponse = _currentResponse(secondResponseDigest);
-        if (firstResponse.subjectDigest == secondResponse.subjectDigest) revert DistinctLineagesRequired();
+        if (firstResponse.subjectDigest == secondResponse.subjectDigest) {
+            revert DistinctLineagesRequired();
+        }
 
-        TradeProofRegistry.Anchor memory firstPassport = _currentPassport(firstResponse.subjectDigest);
-        TradeProofRegistry.Anchor memory secondPassport = _currentPassport(secondResponse.subjectDigest);
+        TradeProofRegistry.Anchor memory firstPassport =
+            _currentPassport(firstResponse.subjectDigest);
+        TradeProofRegistry.Anchor memory secondPassport =
+            _currentPassport(secondResponse.subjectDigest);
         if (firstResponse.issuer == firstPassport.issuer) {
             revert SelfResponseNotEligible(firstResponseDigest);
         }
@@ -385,7 +408,8 @@ contract TradeProofContribution {
 
         uint32 firstSeason = seasonAt(firstResponse.anchoredAt);
         uint32 secondSeason = seasonAt(secondResponse.anchoredAt);
-        uint32 distance = firstSeason > secondSeason ? firstSeason - secondSeason : secondSeason - firstSeason;
+        uint32 distance =
+            firstSeason > secondSeason ? firstSeason - secondSeason : secondSeason - firstSeason;
         if (distance > 1) revert SeasonDistanceExceeded(firstSeason, secondSeason);
 
         (bytes32 first, bytes32 second) = firstResponseDigest < secondResponseDigest
@@ -394,12 +418,7 @@ contract TradeProofContribution {
         bytes32 eventKey =
             keccak256(abi.encode(ContributionKind.RepeatTradeUsage, actor, first, second));
         receiptId = _recordAutomatic(
-            eventKey,
-            actor,
-            ContributionKind.RepeatTradeUsage,
-            20,
-            first,
-            second
+            eventKey, actor, ContributionKind.RepeatTradeUsage, 20, first, second
         );
     }
 
@@ -515,7 +534,8 @@ contract TradeProofContribution {
         if (reasonHash == bytes32(0)) revert ZeroDecisionHash();
         Receipt storage receipt = _receipt(receiptId);
         if (
-            receipt.state != ReceiptState.PendingDelay && receipt.state != ReceiptState.PendingReview
+            receipt.state != ReceiptState.PendingDelay
+                && receipt.state != ReceiptState.PendingReview
         ) {
             revert WrongReceiptState(receiptId, receipt.state);
         }
@@ -660,7 +680,9 @@ contract TradeProofContribution {
         );
     }
 
-    function _consumePairPoints(address first, address second, uint32 season, uint32 points) private {
+    function _consumePairPoints(address first, address second, uint32 season, uint32 points)
+        private
+    {
         bytes32 pairKey = _pairKey(first, second);
         uint32 attemptedPoints = seasonalPairPoints[season][pairKey] + points;
         if (attemptedPoints > AUTOMATIC_POINTS_PER_WALLET_PAIR_PER_SEASON) {
@@ -670,7 +692,9 @@ contract TradeProofContribution {
     }
 
     function _pairKey(address first, address second) private pure returns (bytes32) {
-        return first < second ? keccak256(abi.encode(first, second)) : keccak256(abi.encode(second, first));
+        return first < second
+            ? keccak256(abi.encode(first, second))
+            : keccak256(abi.encode(second, first));
     }
 
     function _currentPassport(bytes32 digest)
@@ -680,7 +704,9 @@ contract TradeProofContribution {
     {
         if (digest == bytes32(0)) revert ZeroDigest();
         anchor = registry.getAnchor(digest);
-        if (anchor.kind != TradeProofRegistry.ArtifactKind.Passport) revert PassportRequired(digest);
+        if (anchor.kind != TradeProofRegistry.ArtifactKind.Passport) {
+            revert PassportRequired(digest);
+        }
         if (!registry.isCurrent(digest)) revert ArtifactNotCurrent(digest);
     }
 
@@ -691,7 +717,9 @@ contract TradeProofContribution {
     {
         if (digest == bytes32(0)) revert ZeroDigest();
         anchor = registry.getAnchor(digest);
-        if (anchor.kind != TradeProofRegistry.ArtifactKind.Response) revert ResponseRequired(digest);
+        if (anchor.kind != TradeProofRegistry.ArtifactKind.Response) {
+            revert ResponseRequired(digest);
+        }
         if (!registry.isCurrent(digest)) revert ArtifactNotCurrent(digest);
     }
 
