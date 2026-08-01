@@ -260,7 +260,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          forge fmt --check
+          forge fmt --check \
+            contracts/TradeProofRegistry.sol \
+            contracts/TradeProofContribution.sol \
+            contracts/TradeProofToken.sol \
+            contracts/TradeProofTeamVesting.sol \
+            contracts/TradeProofGenesis.sol \
+            contracts/TradeProofSeasonAllocation.sol \
+            contracts/TradeProofTestnetTreasuryVault.sol \
+            test/TradeProofRegistry.t.sol \
+            test/TradeProofContribution.t.sol \
+            test/TradeProofToken.t.sol \
+            test/TradeProofSeasonAllocation.t.sol \
+            test/TradeProofEconomicStack.t.sol \
+            script/DeployTradeProofRegistry.s.sol \
+            script/DeployTradeProofEconomicStack.s.sol
           forge build --sizes --skip script
           forge build script/DeployTradeProofEconomicStack.s.sol
           forge test -vvv
