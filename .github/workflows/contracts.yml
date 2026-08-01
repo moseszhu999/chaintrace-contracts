@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   foundry:
@@ -16,33 +16,11 @@ jobs:
     steps:
       - name: Checkout contracts
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-
-      - name: Apply canonical Token genesis formatting
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/trade-proof-token-genesis-v0.1'
-        run: |
-          forge fmt \
-            contracts/TradeProofToken.sol \
-            contracts/TradeProofTeamVesting.sol \
-            contracts/TradeProofGenesis.sol \
-            test/TradeProofToken.t.sol
-          git add \
-            contracts/TradeProofToken.sol \
-            contracts/TradeProofTeamVesting.sol \
-            contracts/TradeProofGenesis.sol \
-            test/TradeProofToken.t.sol
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "style: apply canonical Token genesis formatting"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
 
       - name: Check canonical contract formatting
         run: |
