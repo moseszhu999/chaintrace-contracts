@@ -78,12 +78,10 @@ contract DeployTradeProofEconomicStack {
             new TradeProofTestnetTreasuryVault(operator, COMMUNITY_PURPOSE);
         deployment.ecosystemTreasury =
             new TradeProofTestnetTreasuryVault(operator, ECOSYSTEM_PURPOSE);
-        deployment.adoptionTreasury =
-            new TradeProofTestnetTreasuryVault(operator, ADOPTION_PURPOSE);
+        deployment.adoptionTreasury = new TradeProofTestnetTreasuryVault(operator, ADOPTION_PURPOSE);
         deployment.liquidityReserve =
             new TradeProofTestnetTreasuryVault(operator, LIQUIDITY_PURPOSE);
-        deployment.securityReserve =
-            new TradeProofTestnetTreasuryVault(operator, SECURITY_PURPOSE);
+        deployment.securityReserve = new TradeProofTestnetTreasuryVault(operator, SECURITY_PURPOSE);
 
         deployment.contribution = new TradeProofContribution(deployment.registry);
         deployment.genesis = new TradeProofGenesis(

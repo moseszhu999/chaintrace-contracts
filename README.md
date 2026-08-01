@@ -186,7 +186,23 @@ Explorer source verification: pending
 deployments/base-sepolia.json
 ```
 
-Only the Registry is deployed. Contribution, Token, vesting, genesis, and seasonal allocation remain source-only until separate deployment gates pass.
+Only the Registry is currently deployed. Contribution, Token, vesting, genesis, seasonal allocation, and testnet treasury vaults remain source-only until separate deployment gates pass.
+
+## Base Sepolia economic-stack deployment preparation
+
+The bounded deployment package adds:
+
+```text
+contracts/TradeProofTestnetTreasuryVault.sol
+script/DeployTradeProofEconomicStack.s.sol
+test/TradeProofEconomicStack.t.sol
+deployments/base-sepolia-economic-stack.template.json
+docs/base-sepolia-economic-stack-deployment-v0.1.md
+```
+
+The script reuses the canonical Registry and deploys Contribution, fixed-supply Token genesis, team vesting, seasonal allocation, and five visibly centralized Base Sepolia treasury vaults. The five vaults and the testnet operator are not a production governance design.
+
+A successful testnet deployment must begin with no season proposal, no allocation funding, no active claim, no Token sale, no liquidity pool, and no market. The deployment branch prepares source and tests only; transaction broadcast and canonical evidence remain a separate operational step.
 
 ## Legacy proof primitives
 

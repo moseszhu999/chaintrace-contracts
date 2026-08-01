@@ -22,7 +22,10 @@ contract TradeProofTestnetTreasuryVault {
         address indexed token, address indexed spender, uint256 amount, bytes32 indexed purposeHash
     );
     event TokenTransferred(
-        address indexed token, address indexed recipient, uint256 amount, bytes32 indexed purposeHash
+        address indexed token,
+        address indexed recipient,
+        uint256 amount,
+        bytes32 indexed purposeHash
     );
 
     modifier onlyOperator() {
@@ -45,7 +48,9 @@ contract TradeProofTestnetTreasuryVault {
 
     function transferToken(address token, address recipient, uint256 amount) external onlyOperator {
         if (token == address(0) || recipient == address(0)) revert ZeroAddress();
-        if (!IERC20TestnetTreasury(token).transfer(recipient, amount)) revert TokenOperationFailed();
+        if (!IERC20TestnetTreasury(token).transfer(recipient, amount)) {
+            revert TokenOperationFailed();
+        }
         emit TokenTransferred(token, recipient, amount, purposeHash);
     }
 }

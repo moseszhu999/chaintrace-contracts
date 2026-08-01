@@ -26,10 +26,8 @@ contract TradeProofEconomicStackTest {
     bytes32 private constant COMMUNITY_PURPOSE = keccak256("TPROOF_TESTNET_COMMUNITY");
     bytes32 private constant ECOSYSTEM_PURPOSE = keccak256("TPROOF_TESTNET_ECOSYSTEM");
     bytes32 private constant ADOPTION_PURPOSE = keccak256("TPROOF_TESTNET_ADOPTION");
-    bytes32 private constant LIQUIDITY_PURPOSE =
-        keccak256("TPROOF_TESTNET_LIQUIDITY_RESERVE");
-    bytes32 private constant SECURITY_PURPOSE =
-        keccak256("TPROOF_TESTNET_SECURITY_RESERVE");
+    bytes32 private constant LIQUIDITY_PURPOSE = keccak256("TPROOF_TESTNET_LIQUIDITY_RESERVE");
+    bytes32 private constant SECURITY_PURPOSE = keccak256("TPROOF_TESTNET_SECURITY_RESERVE");
 
     TradeProofRegistry private registry;
     TradeProofContribution private contribution;
@@ -62,8 +60,9 @@ contract TradeProofEconomicStackTest {
         );
         token = genesis.token();
         teamVesting = genesis.teamVesting();
-        seasonAllocation =
-            new TradeProofSeasonAllocation(token, contribution, OPERATOR, address(communityTreasury));
+        seasonAllocation = new TradeProofSeasonAllocation(
+            token, contribution, OPERATOR, address(communityTreasury)
+        );
     }
 
     function testEconomicStackUsesExistingRegistryAndIndependentContributionState() public view {
@@ -201,9 +200,8 @@ contract TradeProofEconomicStackTest {
     }
 
     function testTestnetVaultHasNoOwnershipTransferOrUpgradeSurface() public {
-        (bool ownerTransferSuccess,) = address(communityTreasury).call(
-            abi.encodeWithSignature("transferOwnership(address)", ALICE)
-        );
+        (bool ownerTransferSuccess,) = address(communityTreasury)
+            .call(abi.encodeWithSignature("transferOwnership(address)", ALICE));
         (bool upgradeSuccess,) =
             address(communityTreasury).call(abi.encodeWithSignature("upgradeTo(address)", ALICE));
         (bool ethSweepSuccess,) =
