@@ -11,35 +11,39 @@ permissions:
 
 env:
   BASE_SEPOLIA_RPC_URL: https://sepolia.base.org
+  BLOCKSCOUT_API_URL: https://base-sepolia.blockscout.com/api/v2
   CONTRACT_ADDRESS: 0x6eE7ec00035b17C8D1dE1D24458552441D8A93c7
   DEPLOYER_ADDRESS: 0x072A01FE3DdbF351DAaf6Da70CE5E67f5101fEC9
-  DEPLOYMENT_TIME_UTC: 2026-08-01T01:27:23+00:00
 
 jobs:
   recover:
     if: github.actor != 'github-actions[bot]'
-    name: Verify bytecode, recover creation transaction, and persist evidence
+    name: Verify and persist Base Sepolia deployment evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Check out canonical repository
         uses: actions/checkout@v4
 
-      - name: Recover deployment evidence from Base Sepolia
+      - name: Recover deployment evidence
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p deployments deployment-output
           python - <<'PY'
-          from datetime import datetime
           import json
           import os
           import urllib.request
 
           rpc_url = os.environ["BASE_SEPOLIA_RPC_URL"]
-          deployer = os.environ["DEPLOYER_ADDRESS"].lower()
-          contract_address = os.environ["CONTRACT_ADDRESS"].lower()
-          target_timestamp = int(datetime.fromisoformat(os.environ["DEPLOYMENT_TIME_UTC"]).timestamp())
+          api_url = os.environ["BLOCKSCOUT_API_URL"]
+          contract_address = os.environ["CONTRACT_ADDRESS"]
+          deployer_address = os.environ["DEPLOYER_ADDRESS"]
+
+          def get_json(url):
+              request = urllib.request.Request(url, headers={"accept": "application/json"})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.loads(response.read().decode())
 
           def rpc(method, params):
               payload = json.dumps({
@@ -53,11 +57,19 @@ jobs:
                   data=payload,
                   headers={"content-type": "application/json"},
               )
-              with urllib.request.urlopen(request, timeout=20) as response:
+              with urllib.request.urlopen(request, timeout=30) as response:
                   result = json.loads(response.read().decode())
               if "error" in result:
                   raise RuntimeError(result["error"])
               return result["result"]
+
+          address_info = get_json(f"{api_url}/addresses/{contract_address}")
+          tx_hash = address_info.get("creation_transaction_hash")
+          creator = address_info.get("creator_address_hash")
+          if not tx_hash:
+              raise RuntimeError("Blockscout has not indexed the contract creation transaction")
+          if not creator or creator.lower() != deployer_address.lower():
+              raise RuntimeError(f"Unexpected contract creator: {creator}")
 
           chain_id = int(rpc("eth_chainId", []), 16)
           if chain_id != 84532:
@@ -67,77 +79,34 @@ jobs:
           if bytecode == "0x":
               raise RuntimeError(f"No deployed bytecode found at {contract_address}")
 
-          deployer_nonce = int(rpc("eth_getTransactionCount", [deployer, "latest"]), 16)
-          if deployer_nonce < 1:
-              raise RuntimeError("Deployer nonce does not show a confirmed transaction")
-
-          latest = int(rpc("eth_blockNumber", []), 16)
-
-          # Binary-search the block nearest the known broadcast time. This avoids
-          # rate-limited full-chain scans against the public Base Sepolia RPC.
-          low = 0
-          high = latest
-          while low < high:
-              middle = (low + high) // 2
-              block = rpc("eth_getBlockByNumber", [hex(middle), False])
-              block_timestamp = int(block["timestamp"], 16)
-              if block_timestamp < target_timestamp:
-                  low = middle + 1
-              else:
-                  high = middle
-          center = low
-
-          found = None
-          start = max(0, center - 180)
-          end = min(latest, center + 180)
-          for number in range(start, end + 1):
-              block = rpc("eth_getBlockByNumber", [hex(number), True])
-              if not block:
-                  continue
-              for transaction in block.get("transactions", []):
-                  if transaction.get("from", "").lower() != deployer:
-                      continue
-                  if transaction.get("to") is not None:
-                      continue
-                  receipt = rpc("eth_getTransactionReceipt", [transaction["hash"]])
-                  if not receipt:
-                      continue
-                  receipt_contract = (receipt.get("contractAddress") or "").lower()
-                  if receipt_contract != contract_address:
-                      continue
-                  found = {
-                      "transactionHash": transaction["hash"],
-                      "blockNumber": str(int(receipt["blockNumber"], 16)),
-                      "status": int(receipt["status"], 16),
-                  }
-                  break
-              if found:
-                  break
-
-          if not found:
-              raise RuntimeError(
-                  "Contract bytecode exists, but its creation transaction was not found "
-                  "within the bounded deployment-time block window"
-              )
-          if found["status"] != 1:
-              raise RuntimeError("Recovered deployment transaction did not succeed")
+          receipt = rpc("eth_getTransactionReceipt", [tx_hash])
+          transaction = rpc("eth_getTransactionByHash", [tx_hash])
+          if not receipt or not transaction:
+              raise RuntimeError("Creation transaction or receipt is unavailable")
+          if int(receipt["status"], 16) != 1:
+              raise RuntimeError("Creation transaction failed")
+          if (receipt.get("contractAddress") or "").lower() != contract_address.lower():
+              raise RuntimeError("Receipt contract address does not match")
+          if transaction.get("from", "").lower() != deployer_address.lower():
+              raise RuntimeError("Creation transaction deployer does not match")
+          if transaction.get("to") is not None:
+              raise RuntimeError("Recovered transaction is not contract creation")
+          if int(transaction.get("nonce", "0x0"), 16) != 0:
+              raise RuntimeError("Creation transaction nonce is not zero")
 
           evidence = {
               "network": "base-sepolia",
               "chainId": chain_id,
               "contractName": "TradeProofRegistry",
-              "address": os.environ["CONTRACT_ADDRESS"],
-              "transactionHash": found["transactionHash"],
-              "blockNumber": found["blockNumber"],
-              "deployer": os.environ["DEPLOYER_ADDRESS"],
+              "address": contract_address,
+              "transactionHash": tx_hash,
+              "blockNumber": str(int(receipt["blockNumber"], 16)),
+              "deployer": deployer_address,
               "registrySourceCommit": "27248faeed7f3eb88428fa8ce7979223e088429f",
               "bytecodeSizeBytes": (len(bytecode) - 2) // 2,
               "bytecodeVerified": True,
               "sourceVerification": "not-yet-recorded",
-              "explorerUrl": (
-                  "https://sepolia.basescan.org/address/"
-                  + os.environ["CONTRACT_ADDRESS"]
-              ),
+              "explorerUrl": f"https://sepolia.basescan.org/address/{contract_address}",
           }
           rendered = json.dumps(evidence, indent=2) + "\n"
           for path in (
@@ -148,24 +117,6 @@ jobs:
                   handle.write(rendered)
           print(rendered)
           PY
-
-      - name: Publish deployment summary
-        shell: bash
-        run: |
-          set -euo pipefail
-          ADDRESS="$(jq -r '.address' deployments/base-sepolia.json)"
-          TX_HASH="$(jq -r '.transactionHash' deployments/base-sepolia.json)"
-          BLOCK_NUMBER="$(jq -r '.blockNumber' deployments/base-sepolia.json)"
-          BYTECODE_SIZE="$(jq -r '.bytecodeSizeBytes' deployments/base-sepolia.json)"
-          {
-            echo "## TradeProofRegistry Base Sepolia deployment"
-            echo ""
-            echo "- Address: \`$ADDRESS\`"
-            echo "- Transaction: \`$TX_HASH\`"
-            echo "- Block: \`$BLOCK_NUMBER\`"
-            echo "- Bytecode: \`$BYTECODE_SIZE bytes\`"
-            echo "- Chain ID: \`84532\`"
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Persist canonical deployment manifest
         shell: bash
