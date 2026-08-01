@@ -79,8 +79,13 @@ jobs:
             script/DeployTradeProofRegistry.s.sol \
             script/DeployTradeProofEconomicStack.s.sol
 
-      - name: Build contracts
-        run: forge build --sizes
+      - name: Build deployable contracts with EIP-170 size gates
+        run: forge build --sizes --skip script
+
+      - name: Compile Foundry deployment scripts
+        run: |
+          forge build script/DeployTradeProofRegistry.s.sol
+          forge build script/DeployTradeProofEconomicStack.s.sol
 
       - name: Run tests
         run: forge test -vvv
