@@ -58,7 +58,8 @@ contract TradeProofGenesis {
         }
         if (
             deployedToken.balanceOf(address(this)) != 0
-                || deployedToken.balanceOf(address(deployedVesting)) != deployedToken.TEAM_ALLOCATION()
+                || deployedToken.balanceOf(address(deployedVesting))
+                    != deployedToken.TEAM_ALLOCATION()
                 || deployedToken.totalSupply() != deployedToken.MAX_SUPPLY()
         ) {
             revert GenesisInvariantFailed();
@@ -66,7 +67,9 @@ contract TradeProofGenesis {
 
         token = deployedToken;
         teamVesting = deployedVesting;
-        emit GenesisDeployed(address(deployedToken), address(deployedVesting), teamBeneficiary, vestingStart);
+        emit GenesisDeployed(
+            address(deployedToken), address(deployedVesting), teamBeneficiary, vestingStart
+        );
     }
 
     function _validateBeneficiaries(

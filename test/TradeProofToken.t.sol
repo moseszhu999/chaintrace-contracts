@@ -32,13 +32,7 @@ contract TradeProofTokenTest {
     function setUp() public {
         vestingStart = uint64(block.timestamp + 1 days);
         genesis = new TradeProofGenesis(
-            COMMUNITY,
-            ECOSYSTEM,
-            TEAM,
-            ADOPTION,
-            LIQUIDITY,
-            SECURITY,
-            vestingStart
+            COMMUNITY, ECOSYSTEM, TEAM, ADOPTION, LIQUIDITY, SECURITY, vestingStart
         );
         token = genesis.token();
         vesting = genesis.teamVesting();
@@ -103,9 +97,7 @@ contract TradeProofTokenTest {
 
     function testInsufficientBalanceIsRejected() public {
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TradeProofToken.InsufficientBalance.selector, ALICE, 0, 1
-            )
+            abi.encodeWithSelector(TradeProofToken.InsufficientBalance.selector, ALICE, 0, 1)
         );
         vm.prank(ALICE);
         token.transfer(BOB, 1);
@@ -136,9 +128,12 @@ contract TradeProofTokenTest {
             address(token).call(abi.encodeWithSignature("mint(address,uint256)", ALICE, 1e18));
         (bool ownerSuccess,) = address(token).call(abi.encodeWithSignature("owner()"));
         (bool taxSuccess,) = address(token).call(abi.encodeWithSignature("setTax(uint256)", 1));
-        (bool forcedTransferSuccess,) = address(token).call(
-            abi.encodeWithSignature("forceTransfer(address,address,uint256)", COMMUNITY, ALICE, 1)
-        );
+        (bool forcedTransferSuccess,) = address(token)
+            .call(
+                abi.encodeWithSignature(
+                    "forceTransfer(address,address,uint256)", COMMUNITY, ALICE, 1
+                )
+            );
         _assertFalse(mintSuccess, "mint surface");
         _assertFalse(ownerSuccess, "owner surface");
         _assertFalse(taxSuccess, "tax surface");
@@ -200,26 +195,14 @@ contract TradeProofTokenTest {
             abi.encodeWithSelector(TradeProofGenesis.DuplicateBeneficiary.selector, ECOSYSTEM)
         );
         new TradeProofGenesis(
-            COMMUNITY,
-            ECOSYSTEM,
-            ECOSYSTEM,
-            ADOPTION,
-            LIQUIDITY,
-            SECURITY,
-            uint64(block.timestamp)
+            COMMUNITY, ECOSYSTEM, ECOSYSTEM, ADOPTION, LIQUIDITY, SECURITY, uint64(block.timestamp)
         );
     }
 
     function testGenesisRejectsZeroEconomicBeneficiary() public {
         vm.expectRevert(TradeProofGenesis.ZeroAddress.selector);
         new TradeProofGenesis(
-            address(0),
-            ECOSYSTEM,
-            TEAM,
-            ADOPTION,
-            LIQUIDITY,
-            SECURITY,
-            uint64(block.timestamp)
+            address(0), ECOSYSTEM, TEAM, ADOPTION, LIQUIDITY, SECURITY, uint64(block.timestamp)
         );
     }
 

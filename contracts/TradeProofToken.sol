@@ -25,11 +25,15 @@ contract TradeProofToken {
     error ZeroAddress();
     error DuplicateRecipient(address recipient);
     error InsufficientBalance(address account, uint256 available, uint256 required);
-    error InsufficientAllowance(address owner, address spender, uint256 available, uint256 required);
+    error InsufficientAllowance(
+        address owner, address spender, uint256 available, uint256 required
+    );
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
-    event GenesisAllocation(address indexed recipient, bytes32 indexed allocationId, uint256 amount);
+    event GenesisAllocation(
+        address indexed recipient, bytes32 indexed allocationId, uint256 amount
+    );
 
     constructor(
         address communityTreasury,
@@ -53,12 +57,8 @@ contract TradeProofToken {
         _genesisMint(ecosystemTreasury, keccak256("ECOSYSTEM"), ECOSYSTEM_ALLOCATION);
         _genesisMint(teamVestingEscrow, keccak256("TEAM_VESTING"), TEAM_ALLOCATION);
         _genesisMint(adoptionTreasury, keccak256("ADOPTION"), ADOPTION_ALLOCATION);
-        _genesisMint(
-            liquidityReserve, keccak256("LIQUIDITY_RESERVE"), LIQUIDITY_RESERVE_ALLOCATION
-        );
-        _genesisMint(
-            securityReserve, keccak256("SECURITY_RESERVE"), SECURITY_RESERVE_ALLOCATION
-        );
+        _genesisMint(liquidityReserve, keccak256("LIQUIDITY_RESERVE"), LIQUIDITY_RESERVE_ALLOCATION);
+        _genesisMint(securityReserve, keccak256("SECURITY_RESERVE"), SECURITY_RESERVE_ALLOCATION);
 
         assert(totalSupply == MAX_SUPPLY);
     }
