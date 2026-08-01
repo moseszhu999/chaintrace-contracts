@@ -8,6 +8,7 @@ import { TradeProofToken } from "../contracts/TradeProofToken.sol";
 import { TradeProofTeamVesting } from "../contracts/TradeProofTeamVesting.sol";
 import { TradeProofSeasonAllocation } from "../contracts/TradeProofSeasonAllocation.sol";
 import { TradeProofTestnetTreasuryVault } from "../contracts/TradeProofTestnetTreasuryVault.sol";
+import { DeployTradeProofEconomicStack } from "../script/DeployTradeProofEconomicStack.s.sol";
 
 interface VmEconomicStackTest {
     function prank(address caller) external;
@@ -40,6 +41,7 @@ contract TradeProofEconomicStackTest {
     TradeProofTestnetTreasuryVault private adoptionTreasury;
     TradeProofTestnetTreasuryVault private liquidityReserve;
     TradeProofTestnetTreasuryVault private securityReserve;
+    DeployTradeProofEconomicStack private deploymentScript;
 
     function setUp() public {
         registry = new TradeProofRegistry();
@@ -63,6 +65,19 @@ contract TradeProofEconomicStackTest {
         seasonAllocation = new TradeProofSeasonAllocation(
             token, contribution, OPERATOR, address(communityTreasury)
         );
+        deploymentScript = new DeployTradeProofEconomicStack();
+    }
+
+    function testDeploymentScriptAddsExplicitVestingStartDelay() public view {
+        uint64 observedTimestamp = 1_785_567_922;
+        uint64 vestingStart = deploymentScript.computeTeamVestingStart(observedTimestamp);
+        _assertEq(
+            uint256(deploymentScript.VESTING_START_DELAY()), uint256(1 hours), "vesting delay"
+        );
+        _assertEq(
+            uint256(vestingStart), uint256(observedTimestamp) + 1 hours, "buffered vesting start"
+        );
+        _assertTrue(vestingStart > observedTimestamp + 2, "covers RPC timestamp drift");
     }
 
     function testEconomicStackUsesExistingRegistryAndIndependentContributionState() public view {
