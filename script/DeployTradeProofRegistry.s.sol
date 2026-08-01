@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {TradeProofRegistry} from "../contracts/TradeProofRegistry.sol";
+import { TradeProofRegistry } from "../contracts/TradeProofRegistry.sol";
 
 interface Vm {
     function envUint(string calldata name) external returns (uint256 value);
