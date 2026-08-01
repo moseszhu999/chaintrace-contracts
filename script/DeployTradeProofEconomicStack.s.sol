@@ -21,6 +21,8 @@ contract DeployTradeProofEconomicStack {
     VmEconomicStack private constant vm =
         VmEconomicStack(address(uint160(uint256(keccak256("hevm cheat code")))));
 
+    uint64 public constant VESTING_START_DELAY = 1 hours;
+
     bytes32 public constant COMMUNITY_PURPOSE = keccak256("TPROOF_TESTNET_COMMUNITY");
     bytes32 public constant ECOSYSTEM_PURPOSE = keccak256("TPROOF_TESTNET_ECOSYSTEM");
     bytes32 public constant ADOPTION_PURPOSE = keccak256("TPROOF_TESTNET_ADOPTION");
@@ -63,6 +65,11 @@ contract DeployTradeProofEconomicStack {
         uint64 teamVestingStart;
     }
 
+    /// @notice Adds a fixed buffer so RPC simulation and transaction inclusion cannot backdate vesting.
+    function computeTeamVestingStart(uint64 observedTimestamp) public pure returns (uint64) {
+        return observedTimestamp + VESTING_START_DELAY;
+    }
+
     function run() external returns (Deployment memory deployment) {
         address registryAddress = vm.envAddress("TRADE_PROOF_REGISTRY");
         address operator = vm.envAddress("TESTNET_OPERATOR");
@@ -71,7 +78,7 @@ contract DeployTradeProofEconomicStack {
 
         deployment.registry = TradeProofRegistry(registryAddress);
         deployment.operator = operator;
-        deployment.teamVestingStart = uint64(block.timestamp);
+        deployment.teamVestingStart = computeTeamVestingStart(uint64(block.timestamp));
 
         vm.startBroadcast();
         deployment.communityTreasury =
