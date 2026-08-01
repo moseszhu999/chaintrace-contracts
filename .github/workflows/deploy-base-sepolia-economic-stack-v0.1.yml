@@ -1,0 +1,413 @@
+name: Deploy Base Sepolia Economic Stack v0.1
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: tradeproof-base-sepolia-economic-stack-v0-1
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.number == 13 &&
+      github.event.comment.user.login == 'moseszhu999' &&
+      github.event.comment.body == '/deploy-tradeproof-economic-stack-base-sepolia-v0.1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_COMMIT: d89dd24eba52aa49ffed00ca8c6e450444214c2b
+      RPC_URL: https://sepolia.base.org
+      CHAIN_ID: "84532"
+      TRADE_PROOF_REGISTRY: 0xad1c714140ceb8ed7c5234d939a06926f5edaba2
+
+    steps:
+      - name: Reject a duplicate completed deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13,
+              per_page: 100
+            });
+            const complete = comments.some((comment) =>
+              comment.body?.includes('TradeProof economic stack deployment complete')
+            );
+            if (complete) core.setFailed('A completed deployment marker already exists on PR #13.');
+
+      - name: Check out exact reviewed source
+        uses: actions/checkout@v4
+        with:
+          ref: d89dd24eba52aa49ffed00ca8c6e450444214c2b
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Resolve signing identity without exposing the key
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set +x
+          if [ -z "$RAW_PRIVATE_KEY" ]; then
+            echo "DEPLOYER_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          echo "::add-mask::$PRIVATE_KEY"
+          OPERATOR="$(cast wallet address --private-key "$PRIVATE_KEY")"
+          if [ -z "$OPERATOR" ]; then
+            echo "Unable to derive operator address." >&2
+            exit 1
+          fi
+          echo "TESTNET_OPERATOR=$OPERATOR" >> "$GITHUB_ENV"
+          echo "Resolved public testnet operator: $OPERATOR"
+
+      - name: Verify Base Sepolia, Registry, balance and starting nonce
+        run: |
+          set -euo pipefail
+          ACTUAL_CHAIN_ID="$(cast chain-id --rpc-url "$RPC_URL")"
+          test "$ACTUAL_CHAIN_ID" = "$CHAIN_ID"
+          REGISTRY_CODE="$(cast code "$TRADE_PROOF_REGISTRY" --rpc-url "$RPC_URL")"
+          test "$REGISTRY_CODE" != "0x"
+          BALANCE_WEI="$(cast balance "$TESTNET_OPERATOR" --wei --rpc-url "$RPC_URL")"
+          NONCE_BEFORE="$(cast nonce "$TESTNET_OPERATOR" --rpc-url "$RPC_URL")"
+          test "$BALANCE_WEI" -gt 0
+          python - <<PY
+          import json
+          from pathlib import Path
+          Path('preflight.json').write_text(json.dumps({
+              'chainId': int('$ACTUAL_CHAIN_ID'),
+              'operator': '$TESTNET_OPERATOR',
+              'balanceWeiBefore': '$BALANCE_WEI',
+              'nonceBefore': int('$NONCE_BEFORE'),
+              'registry': '$TRADE_PROOF_REGISTRY',
+              'registryCodeBytes': (len('$REGISTRY_CODE') - 2) // 2,
+              'sourceCommit': '$SOURCE_COMMIT'
+          }, indent=2) + '\n')
+          PY
+          echo "Operator balance: $BALANCE_WEI wei"
+          echo "Operator nonce before deployment: $NONCE_BEFORE"
+
+      - name: Re-run exact source tests and safety scan prerequisites
+        run: |
+          forge fmt --check
+          forge build --sizes --skip script
+          forge build script/DeployTradeProofEconomicStack.s.sol
+          forge test -vvv
+
+      - name: Simulate economic-stack deployment
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set +x
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          echo "::add-mask::$PRIVATE_KEY"
+          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
+          forge script \
+            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
+            --rpc-url "$RPC_URL" \
+            --private-key "$PRIVATE_KEY" \
+            -vvv
+
+      - name: Broadcast economic-stack deployment once
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        run: |
+          set +x
+          PRIVATE_KEY="$RAW_PRIVATE_KEY"
+          case "$PRIVATE_KEY" in
+            0x*) ;;
+            *) PRIVATE_KEY="0x$PRIVATE_KEY" ;;
+          esac
+          echo "::add-mask::$PRIVATE_KEY"
+          export TRADE_PROOF_REGISTRY TESTNET_OPERATOR
+          forge script \
+            script/DeployTradeProofEconomicStack.s.sol:DeployTradeProofEconomicStack \
+            --rpc-url "$RPC_URL" \
+            --private-key "$PRIVATE_KEY" \
+            --broadcast \
+            --slow \
+            -vvv
+
+      - name: Parse top-level deployment addresses and receipts
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('broadcast/DeployTradeProofEconomicStack.s.sol/84532/run-latest.json')
+          data = json.loads(path.read_text())
+          creates = [
+              item for item in data.get('transactions', [])
+              if item.get('transactionType') in {'CREATE', 'CREATE2'} and item.get('contractAddress')
+          ]
+          vaults = [item['contractAddress'] for item in creates if item.get('contractName') == 'TradeProofTestnetTreasuryVault']
+          if len(vaults) != 5:
+              raise SystemExit(f'Expected five treasury vaults, found {len(vaults)}: {creates}')
+
+          def single(name):
+              values = [item['contractAddress'] for item in creates if item.get('contractName') == name]
+              if len(values) != 1:
+                  raise SystemExit(f'Expected one {name}, found {values}')
+              return values[0]
+
+          receipts = data.get('receipts', [])
+          hashes = [receipt.get('transactionHash') for receipt in receipts if receipt.get('transactionHash')]
+          blocks = []
+          for receipt in receipts:
+              value = receipt.get('blockNumber')
+              if value is None:
+                  continue
+              blocks.append(int(value, 16) if isinstance(value, str) and value.startswith('0x') else int(value))
+          if not hashes or not blocks:
+              raise SystemExit('Broadcast receipts did not contain transaction hashes and blocks')
+
+          output = {
+              'communityTreasury': vaults[0],
+              'ecosystemTreasury': vaults[1],
+              'adoptionTreasury': vaults[2],
+              'liquidityReserve': vaults[3],
+              'securityReserve': vaults[4],
+              'contribution': single('TradeProofContribution'),
+              'genesis': single('TradeProofGenesis'),
+              'seasonAllocation': single('TradeProofSeasonAllocation'),
+              'transactionHashes': hashes,
+              'blockFrom': min(blocks),
+              'blockTo': max(blocks)
+          }
+          Path('deployment-addresses.json').write_text(json.dumps(output, indent=2) + '\n')
+          print(json.dumps(output, indent=2))
+          PY
+
+      - name: Verify deployed bytecode, references, supply, balances and inactive claim state
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json
+          data = json.load(open('deployment-addresses.json'))
+          for key, value in data.items():
+              if isinstance(value, str):
+                  print(f"export {key.upper()}='{value}'")
+          PY
+          )"
+
+          TOKEN="$(cast call "$GENESIS" 'token()(address)' --rpc-url "$RPC_URL")"
+          TEAM_VESTING="$(cast call "$GENESIS" 'teamVesting()(address)' --rpc-url "$RPC_URL")"
+          export TOKEN TEAM_VESTING
+
+          addresses=(
+            "$COMMUNITYTREASURY" "$ECOSYSTEMTREASURY" "$ADOPTIONTREASURY"
+            "$LIQUIDITYRESERVE" "$SECURITYRESERVE" "$CONTRIBUTION"
+            "$GENESIS" "$TOKEN" "$TEAM_VESTING" "$SEASONALLOCATION"
+          )
+          for address in "${addresses[@]}"; do
+            code="$(cast code "$address" --rpc-url "$RPC_URL")"
+            test "$code" != "0x"
+          done
+
+          lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+          first() { awk '{print $1}'; }
+          call_uint() { cast call "$1" "$2" ${3:+"$3"} --rpc-url "$RPC_URL" | first; }
+          call_address() { cast call "$1" "$2" ${3:+"$3"} --rpc-url "$RPC_URL" | first; }
+
+          test "$(lower "$(call_address "$CONTRIBUTION" 'registry()(address)')")" = "$(lower "$TRADE_PROOF_REGISTRY")"
+          test "$(lower "$(call_address "$CONTRIBUTION" 'owner()(address)')")" = "$(lower "$TESTNET_OPERATOR")"
+          test "$(cast call "$CONTRIBUTION" 'reviewers(address)(bool)' "$TESTNET_OPERATOR" --rpc-url "$RPC_URL" | first)" = "true"
+
+          test "$(call_uint "$TOKEN" 'totalSupply()(uint256)')" = "1000000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'MAX_SUPPLY()(uint256)')" = "1000000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$COMMUNITYTREASURY")" = "450000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$ECOSYSTEMTREASURY")" = "200000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$TEAM_VESTING")" = "150000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$ADOPTIONTREASURY")" = "100000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$LIQUIDITYRESERVE")" = "50000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$SECURITYRESERVE")" = "50000000000000000000000000"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$GENESIS")" = "0"
+
+          test "$(lower "$(call_address "$TEAM_VESTING" 'beneficiary()(address)')")" = "$(lower "$TESTNET_OPERATOR")"
+          test "$(lower "$(call_address "$SEASONALLOCATION" 'token()(address)')")" = "$(lower "$TOKEN")"
+          test "$(lower "$(call_address "$SEASONALLOCATION" 'contribution()(address)')")" = "$(lower "$CONTRIBUTION")"
+          test "$(lower "$(call_address "$SEASONALLOCATION" 'publisher()(address)')")" = "$(lower "$TESTNET_OPERATOR")"
+          test "$(lower "$(call_address "$SEASONALLOCATION" 'communityTreasury()(address)')")" = "$(lower "$COMMUNITYTREASURY")"
+          test "$(call_uint "$SEASONALLOCATION" 'totalCommunityCommitted()(uint256)')" = "0"
+          test "$(call_uint "$SEASONALLOCATION" 'seasonRevision(uint32)(uint32)' '0')" = "0"
+          test "$(call_uint "$TOKEN" 'balanceOf(address)(uint256)' "$SEASONALLOCATION")" = "0"
+          test "$(cast call "$TOKEN" 'allowance(address,address)(uint256)' "$COMMUNITYTREASURY" "$SEASONALLOCATION" --rpc-url "$RPC_URL" | first)" = "0"
+
+          NONCE_AFTER="$(cast nonce "$TESTNET_OPERATOR" --rpc-url "$RPC_URL")"
+          BALANCE_AFTER="$(cast balance "$TESTNET_OPERATOR" --wei --rpc-url "$RPC_URL")"
+          export NONCE_AFTER BALANCE_AFTER
+
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          addresses = json.load(open('deployment-addresses.json'))
+          all_addresses = {
+              **{key: value for key, value in addresses.items() if isinstance(value, str)},
+              'token': os.environ['TOKEN'],
+              'teamVesting': os.environ['TEAM_VESTING']
+          }
+          code_sizes = {}
+          for key, address in all_addresses.items():
+              code = subprocess.check_output(
+                  ['cast', 'code', address, '--rpc-url', os.environ['RPC_URL']], text=True
+              ).strip()
+              code_sizes[key] = (len(code) - 2) // 2
+          verification = {
+              'token': os.environ['TOKEN'],
+              'teamVesting': os.environ['TEAM_VESTING'],
+              'operatorNonceAfter': int(os.environ['NONCE_AFTER']),
+              'operatorBalanceWeiAfter': os.environ['BALANCE_AFTER'],
+              'codeSizes': code_sizes,
+              'totalSupplyBaseUnits': '1000000000000000000000000000',
+              'seasonZeroRevision': 0,
+              'totalCommunityCommitted': '0',
+              'allocationTokenBalance': '0',
+              'allocationAllowance': '0',
+              'claimActive': False,
+              'saleActive': False,
+              'liquidityPoolActive': False
+          }
+          Path('deployment-verification.json').write_text(json.dumps(verification, indent=2) + '\n')
+          print(json.dumps(verification, indent=2))
+          PY
+
+      - name: Create canonical deployment evidence files
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          preflight = json.load(open('preflight.json'))
+          addresses = json.load(open('deployment-addresses.json'))
+          verification = json.load(open('deployment-verification.json'))
+          manifest = {
+              'network': 'base-sepolia',
+              'chainId': 84532,
+              'status': 'deployed-testnet-inactive',
+              'sourceCommit': 'd89dd24eba52aa49ffed00ca8c6e450444214c2b',
+              'registry': {
+                  'address': '0xad1c714140ceb8ed7c5234d939a06926f5edaba2',
+                  'existingCanonicalDeployment': True
+              },
+              'operator': preflight['operator'],
+              'contracts': {
+                  'contribution': addresses['contribution'],
+                  'token': verification['token'],
+                  'teamVesting': verification['teamVesting'],
+                  'seasonAllocation': addresses['seasonAllocation'],
+                  'genesis': addresses['genesis'],
+                  'communityTreasury': addresses['communityTreasury'],
+                  'ecosystemTreasury': addresses['ecosystemTreasury'],
+                  'adoptionTreasury': addresses['adoptionTreasury'],
+                  'liquidityReserve': addresses['liquidityReserve'],
+                  'securityReserve': addresses['securityReserve']
+              },
+              'token': {
+                  'name': 'TradeProof Token',
+                  'symbol': 'TPROOF',
+                  'decimals': 18,
+                  'maxSupplyTokens': '1000000000',
+                  'totalSupplyBaseUnits': verification['totalSupplyBaseUnits'],
+                  'publicSaleActive': False,
+                  'claimActive': False,
+                  'liquidityPoolActive': False
+              },
+              'deployment': {
+                  'transactionHashes': addresses['transactionHashes'],
+                  'blockFrom': addresses['blockFrom'],
+                  'blockTo': addresses['blockTo'],
+                  'deployedAt': datetime.now(timezone.utc).isoformat(),
+                  'operatorNonceBefore': preflight['nonceBefore'],
+                  'operatorNonceAfter': verification['operatorNonceAfter'],
+                  'operatorBalanceWeiBefore': preflight['balanceWeiBefore'],
+                  'operatorBalanceWeiAfter': verification['operatorBalanceWeiAfter'],
+                  'codeSizes': verification['codeSizes'],
+                  'bytecodeChecks': 'pass',
+                  'sourceVerification': 'pending'
+              },
+              'initialState': {
+                  'seasonZeroRevision': 0,
+                  'totalCommunityCommitted': '0',
+                  'allocationTokenBalance': '0',
+                  'allocationAllowance': '0',
+                  'claimActive': False,
+                  'saleActive': False,
+                  'liquidityPoolActive': False
+              },
+              'boundaries': {
+                  'testnetOnly': True,
+                  'publicClaimAuthorized': False,
+                  'saleAuthorized': False,
+                  'liquidityAuthorized': False,
+                  'mainnetAuthorized': False,
+                  'formalAuditComplete': False,
+                  'legalLaunchClearance': False
+              }
+          }
+          Path('deployments/base-sepolia-economic-stack.json').write_text(
+              json.dumps(manifest, indent=2) + '\n'
+          )
+          contracts = manifest['contracts']
+          evidence = f'''# TradeProof economic stack deployment complete\n\n- Network: Base Sepolia (`84532`)\n- Source: `{manifest['sourceCommit']}`\n- Operator: `{manifest['operator']}`\n- Block range: `{manifest['deployment']['blockFrom']}`–`{manifest['deployment']['blockTo']}`\n- Contribution: `{contracts['contribution']}`\n- TPROOF: `{contracts['token']}`\n- Team vesting: `{contracts['teamVesting']}`\n- Season allocation: `{contracts['seasonAllocation']}`\n- Genesis: `{contracts['genesis']}`\n- Community treasury: `{contracts['communityTreasury']}`\n- Transactions: {len(manifest['deployment']['transactionHashes'])}\n- Bytecode checks: PASS\n- Total supply: 1,000,000,000 TPROOF\n- Season 0 proposal: none\n- Community committed: 0\n- Claim active: false\n- Sale active: false\n- Liquidity pool active: false\n- Source verification: pending\n\nThis is a testnet-only deployment and does not authorize a claim, sale, market, liquidity action, or mainnet launch.\n'''
+          Path('deployment-evidence.md').write_text(evidence)
+          print(evidence)
+          PY
+
+      - name: Upload canonical deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: tradeproof-base-sepolia-economic-stack-v0.1
+          path: |
+            deployments/base-sepolia-economic-stack.json
+            deployment-evidence.md
+            preflight.json
+            deployment-addresses.json
+            deployment-verification.json
+            broadcast/DeployTradeProofEconomicStack.s.sol/84532/run-latest.json
+          retention-days: 30
+
+      - name: Record success on carrier PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('deployment-evidence.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13,
+              body
+            });
+
+      - name: Record a bounded failure on carrier PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13,
+              body: `Base Sepolia economic-stack deployment did not complete. No retry is authorized until run ${context.runId} is inspected for whether any transaction was broadcast. Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
