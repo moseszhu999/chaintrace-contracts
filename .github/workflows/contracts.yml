@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   foundry:
@@ -16,33 +16,11 @@ jobs:
     steps:
       - name: Checkout contracts
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: stable
-
-      - name: Integrate docs and apply canonical economic-stack formatting
-        if: github.event_name == 'pull_request' && github.head_ref == 'deploy/base-sepolia-economic-stack-v0.1'
-        run: |
-          python tools/apply-economic-stack-readme.py
-          forge fmt \
-            contracts/TradeProofTestnetTreasuryVault.sol \
-            script/DeployTradeProofEconomicStack.s.sol \
-            test/TradeProofEconomicStack.t.sol
-          git add \
-            README.md \
-            contracts/TradeProofTestnetTreasuryVault.sol \
-            script/DeployTradeProofEconomicStack.s.sol \
-            test/TradeProofEconomicStack.t.sol
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "style: finalize Base Sepolia economic-stack source"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
 
       - name: Parse deployment manifest template
         run: |
