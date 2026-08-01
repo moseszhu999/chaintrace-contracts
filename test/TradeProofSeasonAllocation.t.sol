@@ -47,17 +47,10 @@ contract TradeProofSeasonAllocationTest {
         registry = new TradeProofRegistry();
         contribution = new TradeProofContribution(registry);
         genesis = new TradeProofGenesis(
-            COMMUNITY,
-            ECOSYSTEM,
-            TEAM,
-            ADOPTION,
-            LIQUIDITY,
-            SECURITY,
-            uint64(block.timestamp)
+            COMMUNITY, ECOSYSTEM, TEAM, ADOPTION, LIQUIDITY, SECURITY, uint64(block.timestamp)
         );
         token = genesis.token();
-        allocation =
-            new TradeProofSeasonAllocation(token, contribution, PUBLISHER, COMMUNITY);
+        allocation = new TradeProofSeasonAllocation(token, contribution, PUBLISHER, COMMUNITY);
         vm.prank(COMMUNITY);
         token.approve(address(allocation), type(uint256).max);
     }
@@ -73,8 +66,7 @@ contract TradeProofSeasonAllocationTest {
         _assertEq(token.balanceOf(address(allocation)), funded, "allocation balance");
         _assertEq(allocation.totalCommunityCommitted(), funded, "community committed");
 
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
         vm.warp(distribution.claimableAt);
         allocation.activateSeason(0);
         distribution = allocation.getDistribution(0);
@@ -130,14 +122,11 @@ contract TradeProofSeasonAllocationTest {
         _closeSeasonZeroWithPoints();
         (bytes32 root,,) = _genesisRoot(1);
         _proposeGenesis(root);
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
 
         vm.expectRevert(
             abi.encodeWithSelector(
-                TradeProofSeasonAllocation.ClaimDelayActive.selector,
-                0,
-                distribution.claimableAt
+                TradeProofSeasonAllocation.ClaimDelayActive.selector, 0, distribution.claimableAt
             )
         );
         allocation.activateSeason(0);
@@ -170,8 +159,7 @@ contract TradeProofSeasonAllocationTest {
         allocation.claim(0, BOB, BOB_POINTS, BOB_AMOUNT, bobProof);
         _assertEq(token.balanceOf(BOB), BOB_AMOUNT, "bob allocation");
 
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
         _assertEq(distribution.claimedAmount, 10_000_000 * 1e18, "all claimed");
         _assertEq(
             uint256(distribution.state),
@@ -203,9 +191,7 @@ contract TradeProofSeasonAllocationTest {
         allocation.claim(0, ALICE, ALICE_POINTS, ALICE_AMOUNT, proof);
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TradeProofSeasonAllocation.AlreadyClaimed.selector, 0, ALICE
-            )
+            abi.encodeWithSelector(TradeProofSeasonAllocation.AlreadyClaimed.selector, 0, ALICE)
         );
         allocation.claim(0, ALICE, ALICE_POINTS, ALICE_AMOUNT, proof);
     }
@@ -237,18 +223,14 @@ contract TradeProofSeasonAllocationTest {
         allocation.proposeSeason(0, carolLeaf, DATASET_DIGEST, 1, amount);
         vm.prank(PUBLISHER);
         allocation.fundSeason(0);
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
         vm.warp(distribution.claimableAt);
         allocation.activateSeason(0);
 
         bytes32[] memory proof = new bytes32[](0);
         vm.expectRevert(
             abi.encodeWithSelector(
-                TradeProofSeasonAllocation.IneligiblePoints.selector,
-                CAROL,
-                0,
-                25
+                TradeProofSeasonAllocation.IneligiblePoints.selector, CAROL, 0, 25
             )
         );
         allocation.claim(0, CAROL, 0, amount, proof);
@@ -262,9 +244,7 @@ contract TradeProofSeasonAllocationTest {
         wrongProof[0] = bytes32(uint256(0xBAD));
 
         vm.expectRevert(
-            abi.encodeWithSelector(
-                TradeProofSeasonAllocation.InvalidMerkleProof.selector, 0, ALICE
-            )
+            abi.encodeWithSelector(TradeProofSeasonAllocation.InvalidMerkleProof.selector, 0, ALICE)
         );
         allocation.claim(0, ALICE, ALICE_POINTS, ALICE_AMOUNT, wrongProof);
     }
@@ -288,11 +268,8 @@ contract TradeProofSeasonAllocationTest {
 
         (bytes32 revisionTwoRoot,,) = _genesisRoot(2);
         vm.prank(PUBLISHER);
-        allocation.proposeSeason(
-            0, revisionTwoRoot, bytes32(uint256(0xDA7B)), 2, 10_000_000 * 1e18
-        );
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        allocation.proposeSeason(0, revisionTwoRoot, bytes32(uint256(0xDA7B)), 2, 10_000_000 * 1e18);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
         _assertEq(distribution.revision, 2, "revision incremented");
     }
 
@@ -329,17 +306,13 @@ contract TradeProofSeasonAllocationTest {
 
         uint256 firstAmount = 449_999_999 * 1e18;
         vm.prank(PUBLISHER);
-        allocation.proposeSeason(
-            1, bytes32(uint256(0xA1)), bytes32(uint256(0xD1)), 1, firstAmount
-        );
+        allocation.proposeSeason(1, bytes32(uint256(0xA1)), bytes32(uint256(0xD1)), 1, firstAmount);
         vm.prank(PUBLISHER);
         allocation.fundSeason(1);
 
         uint256 secondAmount = 2 * 1e18;
         vm.prank(PUBLISHER);
-        allocation.proposeSeason(
-            2, bytes32(uint256(0xA2)), bytes32(uint256(0xD2)), 1, secondAmount
-        );
+        allocation.proposeSeason(2, bytes32(uint256(0xA2)), bytes32(uint256(0xD2)), 1, secondAmount);
         vm.expectRevert(
             abi.encodeWithSelector(
                 TradeProofSeasonAllocation.CommunityAllocationExceeded.selector,
@@ -351,7 +324,7 @@ contract TradeProofSeasonAllocationTest {
         allocation.fundSeason(2);
     }
 
-    function testClaimLeafIsDomainSeparatedByRevisionContractAndChain() public view {
+    function testClaimLeafIsDomainSeparatedByRevisionContractAndChain() public {
         bytes32 first = allocation.claimLeaf(0, 1, ALICE, ALICE_POINTS, ALICE_AMOUNT);
         bytes32 second = allocation.claimLeaf(0, 2, ALICE, ALICE_POINTS, ALICE_AMOUNT);
         _assertTrue(first != second, "revision domain separation");
@@ -364,9 +337,8 @@ contract TradeProofSeasonAllocationTest {
 
     function testNoOwnerRootRewriteOrTreasurySweepSurfaceExists() public {
         (bool ownerSuccess,) = address(allocation).call(abi.encodeWithSignature("owner()"));
-        (bool rewriteSuccess,) = address(allocation).call(
-            abi.encodeWithSignature("setMerkleRoot(uint32,bytes32)", 0, bytes32(uint256(1)))
-        );
+        (bool rewriteSuccess,) = address(allocation)
+            .call(abi.encodeWithSignature("setMerkleRoot(uint32,bytes32)", 0, bytes32(uint256(1))));
         (bool sweepSuccess,) =
             address(allocation).call(abi.encodeWithSignature("sweep(address,uint256)", ALICE, 1));
         _assertFalse(ownerSuccess, "owner surface");
@@ -420,8 +392,7 @@ contract TradeProofSeasonAllocationTest {
         _proposeGenesis(root);
         vm.prank(PUBLISHER);
         allocation.fundSeason(0);
-        TradeProofSeasonAllocation.Distribution memory distribution =
-            allocation.getDistribution(0);
+        TradeProofSeasonAllocation.Distribution memory distribution = allocation.getDistribution(0);
         vm.warp(distribution.claimableAt);
         allocation.activateSeason(0);
     }

@@ -14,8 +14,7 @@ contract TradeProofSeasonAllocation {
     uint256 public constant GENESIS_PROOF_POOL = 10_000_000 * 1e18;
     uint256 public constant MAX_COMMUNITY_ALLOCATION = 450_000_000 * 1e18;
 
-    bytes32 public constant REWARD_PROFILE_HASH =
-        keccak256("TPROOF_SQRT_VERIFIED_POINTS_V0_1");
+    bytes32 public constant REWARD_PROFILE_HASH = keccak256("TPROOF_SQRT_VERIFIED_POINTS_V0_1");
     bytes32 public constant CLAIM_TYPEHASH = keccak256(
         "TradeProofSeasonClaim(uint256 chainId,address allocationContract,uint32 season,uint32 revision,address account,uint256 verifiedPoints,uint256 tokenAmount)"
     );
@@ -90,7 +89,10 @@ contract TradeProofSeasonAllocation {
         uint256 totalFunded
     );
     event SeasonActivated(
-        uint32 indexed season, uint32 indexed revision, bytes32 indexed merkleRoot, uint64 activatedAt
+        uint32 indexed season,
+        uint32 indexed revision,
+        bytes32 indexed merkleRoot,
+        uint64 activatedAt
     );
     event SeasonCancelled(
         uint32 indexed season,
@@ -145,7 +147,9 @@ contract TradeProofSeasonAllocation {
         uint32 leafCount,
         uint256 totalAllocated
     ) external onlyPublisher {
-        if (!contribution.seasonClosed(season)) revert SeasonNotClosed(season);
+        if (!contribution.seasonClosed(season)) {
+            revert SeasonNotClosed(season);
+        }
         DistributionState currentState = distributions[season].state;
         if (currentState != DistributionState.None) {
             revert DistributionAlreadyExists(season, currentState);
@@ -209,11 +213,7 @@ contract TradeProofSeasonAllocation {
             revert TokenTransferFailed();
         }
         emit SeasonFunded(
-            season,
-            distribution.revision,
-            communityTreasury,
-            amount,
-            distribution.fundedAmount
+            season, distribution.revision, communityTreasury, amount, distribution.fundedAmount
         );
     }
 
@@ -279,11 +279,7 @@ contract TradeProofSeasonAllocation {
         }
 
         bytes32 leaf = claimLeaf(
-            season,
-            distribution.revision,
-            account,
-            verifiedPointsSnapshot,
-            tokenAmount
+            season, distribution.revision, account, verifiedPointsSnapshot, tokenAmount
         );
         if (!_verifyMerkleProof(merkleProof, distribution.merkleRoot, leaf)) {
             revert InvalidMerkleProof(season, account);
@@ -301,13 +297,7 @@ contract TradeProofSeasonAllocation {
         }
         if (!token.transfer(account, tokenAmount)) revert TokenTransferFailed();
 
-        emit Claimed(
-            season,
-            distribution.revision,
-            account,
-            verifiedPointsSnapshot,
-            tokenAmount
-        );
+        emit Claimed(season, distribution.revision, account, verifiedPointsSnapshot, tokenAmount);
         if (attemptedClaimed == distribution.totalAllocated) {
             emit SeasonCompleted(
                 season, distribution.revision, attemptedClaimed, uint64(block.timestamp)
@@ -346,11 +336,7 @@ contract TradeProofSeasonAllocation {
         Distribution memory distribution = distributions[season];
         if (distribution.state != DistributionState.Active) return false;
         bytes32 leaf = claimLeaf(
-            season,
-            distribution.revision,
-            account,
-            verifiedPointsSnapshot,
-            tokenAmount
+            season, distribution.revision, account, verifiedPointsSnapshot, tokenAmount
         );
         return _verifyMerkleProof(merkleProof, distribution.merkleRoot, leaf);
     }
