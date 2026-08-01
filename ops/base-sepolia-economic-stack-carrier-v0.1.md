@@ -65,7 +65,12 @@ transactionAuthorized: false
 
 ```text
 deploymentWorkflowMain: addcbf15325b5053a874d08be12814d1d8ae7c42
-deploymentTrigger: 2026-08-01-v1
+exactFormatFixMain: e5b534b1a43297eeef67712de4c136171af7afc4
+previousRun: 30688700840
+previousRunStoppedBeforePreflight: true
+previousRunSimulationEntered: false
+previousRunBroadcastEntered: false
+deploymentTrigger: 2026-08-01-v2
 expectedStartingNonce: 2
 expectedEndingNonce: 10
 testnetOnly: true
