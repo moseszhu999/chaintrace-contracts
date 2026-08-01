@@ -1,0 +1,5 @@
+TradeProofRegistry canonical Base Sepolia deployment request v2.
+Expected deployer nonce: 1
+Reviewed registry source commit: 27248faeed7f3eb88428fa8ce7979223e088429f
+Main deployment gate commit: b419d7aaa8f1d0b4b7152681f1ea85e01b21b375
+This branch contains no contract changes and is not intended to merge.
