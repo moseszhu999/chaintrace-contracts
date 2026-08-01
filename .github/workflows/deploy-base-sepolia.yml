@@ -1,0 +1,130 @@
+name: Deploy TradeProofRegistry to Base Sepolia
+
+on:
+  push:
+    branches:
+      - deploy/base-sepolia-trade-proof-registry-v1
+
+permissions:
+  contents: read
+
+env:
+  BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
+  DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+
+jobs:
+  deploy:
+    name: Broadcast reviewed registry deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact deployment source
+        uses: actions/checkout@v4
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Require deployment secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOYER_PRIVATE_KEY:-}" ]; then
+            echo "DEPLOYER_PRIVATE_KEY GitHub Actions secret is not configured."
+            exit 1
+          fi
+
+      - name: Verify Base Sepolia and deployer balance
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHAIN_ID="$(cast chain-id --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          if [ "$CHAIN_ID" != "84532" ]; then
+            echo "Expected Base Sepolia chain ID 84532, received $CHAIN_ID"
+            exit 1
+          fi
+          DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
+          BALANCE_WEI="$(cast balance "$DEPLOYER" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+          echo "Deployer: $DEPLOYER"
+          echo "Balance (wei): $BALANCE_WEI"
+          if [ "$BALANCE_WEI" = "0" ]; then
+            echo "Deployment wallet has no Base Sepolia ETH."
+            exit 1
+          fi
+
+      - name: Build and test exact source
+        run: |
+          forge build --sizes
+          forge test -vvv
+
+      - name: Simulate deployment
+        run: |
+          forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL"
+
+      - name: Broadcast deployment
+        run: |
+          forge script script/DeployTradeProofRegistry.s.sol:DeployTradeProofRegistry \
+            --rpc-url "$BASE_SEPOLIA_RPC_URL" \
+            --broadcast \
+            --slow
+
+      - name: Verify deployed bytecode and write manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          BROADCAST_FILE="broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json"
+          test -f "$BROADCAST_FILE"
+
+          CONTRACT_ADDRESS="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].contractAddress' "$BROADCAST_FILE")"
+          TX_HASH="$(jq -r '[.transactions[] | select(.transactionType == "CREATE")][0].hash' "$BROADCAST_FILE")"
+          BLOCK_NUMBER="$(jq -r '[.receipts[]][0].blockNumber' "$BROADCAST_FILE")"
+          DEPLOYER="$(cast wallet address --private-key "$DEPLOYER_PRIVATE_KEY")"
+          BYTECODE="$(cast code "$CONTRACT_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC_URL")"
+
+          if [ -z "$CONTRACT_ADDRESS" ] || [ "$CONTRACT_ADDRESS" = "null" ]; then
+            echo "Contract address was not found in broadcast output."
+            exit 1
+          fi
+          if [ "$BYTECODE" = "0x" ]; then
+            echo "No deployed bytecode found at $CONTRACT_ADDRESS"
+            exit 1
+          fi
+
+          mkdir -p deployment-output
+          jq -n \
+            --arg network "base-sepolia" \
+            --argjson chainId 84532 \
+            --arg contractName "TradeProofRegistry" \
+            --arg address "$CONTRACT_ADDRESS" \
+            --arg transactionHash "$TX_HASH" \
+            --arg blockNumber "$BLOCK_NUMBER" \
+            --arg deployer "$DEPLOYER" \
+            --arg sourceCommit "$GITHUB_SHA" \
+            --arg explorerUrl "https://sepolia-explorer.base.org/address/$CONTRACT_ADDRESS" \
+            '{
+              network: $network,
+              chainId: $chainId,
+              contractName: $contractName,
+              address: $address,
+              transactionHash: $transactionHash,
+              blockNumber: $blockNumber,
+              deployer: $deployer,
+              sourceCommit: $sourceCommit,
+              explorerUrl: $explorerUrl,
+              sourceVerification: "not-yet-recorded"
+            }' > deployment-output/base-sepolia.json
+
+          cat deployment-output/base-sepolia.json
+          echo "Contract: $CONTRACT_ADDRESS" >> "$GITHUB_STEP_SUMMARY"
+          echo "Transaction: $TX_HASH" >> "$GITHUB_STEP_SUMMARY"
+          echo "Explorer: https://sepolia-explorer.base.org/address/$CONTRACT_ADDRESS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-proof-registry-base-sepolia
+          path: |
+            deployment-output/base-sepolia.json
+            broadcast/DeployTradeProofRegistry.s.sol/84532/run-latest.json
+          if-no-files-found: error
